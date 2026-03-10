@@ -1,0 +1,149 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: global_odom
+    Frame Rate: 30
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Cell Size: 1
+      Color: 160; 160; 160
+      Plane Cell Count: 20
+      Reference Frame: global_odom
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Marker Scale: 0.4
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Update Interval: 0
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: Shared Map
+      Alpha: 0.7
+      Color Scheme: map
+      Draw Behind: false
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /shared_map
+      Value: true
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: false
+      Name: Carter1 Raw Scan
+      Color: 255; 170; 0
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /rviz/carter1/front_2d_lidar/scan
+      Value: false
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: Carter1 Filtered Scan
+      Color: 255; 64; 64
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /rviz/carter1/scan_filtered
+      Value: true
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: false
+      Name: Carter2 Raw Scan
+      Color: 0; 170; 255
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /rviz/carter2/front_2d_lidar/scan
+      Value: false
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: Carter2 Filtered Scan
+      Color: 0; 255; 170
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /rviz/carter2/scan_filtered
+      Value: true
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: false
+      Name: Carter3 Raw Scan
+      Color: 170; 0; 255
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /rviz/carter3/front_2d_lidar/scan
+      Value: false
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: Carter3 Filtered Scan
+      Color: 64; 255; 64
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /rviz/carter3/scan_filtered
+      Value: true
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /goal_pose
+  Value: true
+Window Geometry:
+  Height: 900
+  Width: 1600
+  X: 50
+  Y: 50

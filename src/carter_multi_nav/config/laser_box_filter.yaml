@@ -1,0 +1,14 @@
+scan_to_scan_filter_chain:
+  ros__parameters:
+    filter1:
+      name: carter_body_filter
+      type: laser_filters/LaserScanBoxFilter
+      params:
+        box_frame: base_link
+        min_x: -0.43
+        max_x: 0.43
+        min_y: -0.30
+        max_y: 0.30
+        min_z: -0.10
+        max_z: 0.70
+        invert: false

@@ -1,0 +1,16 @@
+build/
+install/
+log/
+
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+.pytest_cache/
+.mypy_cache/
+
+.vscode/
+.idea/
+.DS_Store
+
+src/slam_toolbox/.git.upstream/
