@@ -9,34 +9,38 @@ $(var namespace)/slam_toolbox:
 
     odom_frame: global_odom
     map_frame: map
-    base_frame: base_link
-    scan_topic: scan_filtered
+    base_frame: base_footprint
+    scan_topic: scan_motion_safe
     scan_share_topic: /localized_scan
     mode: mapping
 
     use_sim_time: true
     debug_logging: false
+    # The live Carter scan stream visibly distorts under rotation, so prefer
+    # fewer, better-aligned scans over trying to process everything.
     throttle_scans: 1
+    scan_queue_size: 1
     transform_publish_period: 0.05
-    map_update_interval: 2.0
+    map_update_interval: 4.0
     resolution: 0.05
+    min_laser_range: 0.10
     max_laser_range: 20.0
-    minimum_time_interval: 0.15
-    transform_timeout: 0.2
+    minimum_time_interval: 0.20
+    transform_timeout: 0.50
     tf_buffer_duration: 30.0
     stack_size_to_use: 40000000
     enable_interactive_mode: true
 
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.25
-    minimum_travel_heading: 0.20
+    minimum_travel_distance: 0.45
+    minimum_travel_heading: 0.35
     check_min_dist_and_heading_precisely: false
-    scan_buffer_size: 20
-    scan_buffer_maximum_scan_distance: 12.0
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
     link_match_minimum_response_fine: 0.1
-    link_scan_maximum_distance: 2.0
-    loop_search_maximum_distance: 4.0
+    link_scan_maximum_distance: 1.5
+    loop_search_maximum_distance: 3.0
     do_loop_closing: true
     loop_match_minimum_chain_size: 10
     loop_match_maximum_variance_coarse: 3.0

@@ -149,6 +149,24 @@ def generate_launch_description():
                     ("/tf_static", "tf_static"),
                 ],
             ),
+            Node(
+                package="carter_multi_nav",
+                executable="scan_motion_gate",
+                name="scan_motion_gate",
+                namespace=robot_name,
+                output="screen",
+                parameters=[
+                    {
+                        "use_sim_time": use_sim_time,
+                        "scan_in": "scan_filtered",
+                        "scan_out": "scan_motion_safe",
+                        "odom_topic": "chassis/odom",
+                        "max_rotation_per_scan_deg": 1.25,
+                        "max_angular_velocity": 0.25,
+                        "holdoff_after_rotation": 0.40,
+                    }
+                ],
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(slam_launch_path),
                 launch_arguments={

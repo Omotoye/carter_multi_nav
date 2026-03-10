@@ -194,6 +194,33 @@ ros2 topic echo /carter1/cmd_vel --once
 ros2 topic echo /carter1/plan --once
 ```
 
+## Scan Diagnostics
+
+If mapping falls apart while the robot is moving or rotating, measure the scan stream before changing more SLAM parameters:
+
+```bash
+ros2 run carter_multi_nav scan_motion_diagnostics --ros-args \
+  -p robot_name:=carter1 \
+  -p use_sim_time:=true
+```
+
+This diagnostic reports:
+
+- observed scan rate
+- scan timestamp lag
+- median and peak angular velocity from odometry
+- median and peak degrees of robot rotation during a single scan
+- whether the scan metadata is internally inconsistent
+
+The most important number is `rotation per scan`. If that grows too large during turns, the lidar is being used faster than the platform can rotate cleanly, and Nav2 rotational limits need to be reduced further or the upstream scan stream needs motion compensation.
+
+This workspace now also includes a scan gate for SLAM:
+
+- `/<robot>/scan_filtered` remains the lidar self-filtered topic
+- `/<robot>/scan_motion_safe` is the SLAM input topic after motion gating
+
+The gate drops scans when angular motion is high enough to exceed the configured per-scan rotation threshold. This is a stabilization measure for mapping, not a substitute for proper lidar deskewing.
+
 ## Shared Map Behavior
 
 `/shared_map` is a canonical display map selected from one robot's namespaced map topic.

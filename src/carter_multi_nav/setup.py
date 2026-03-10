@@ -28,6 +28,8 @@ setup(
     entry_points={
         "console_scripts": [
             "map_selector = carter_multi_nav.map_selector:main",
+            "scan_motion_diagnostics = carter_multi_nav.scan_motion_diagnostics:main",
+            "scan_motion_gate = carter_multi_nav.scan_motion_gate:main",
             "scan_relay = carter_multi_nav.scan_relay:main",
             "tf_aggregate_relay = carter_multi_nav.tf_aggregate_relay:main",
         ],

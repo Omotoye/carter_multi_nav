@@ -40,12 +40,14 @@ controller_server:
       yaw_goal_tolerance: 0.20
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.50
+      # Conservative defaults: this scan stream degrades noticeably under
+      # aggressive robot rotation, so slow the platform down by default.
+      desired_linear_vel: 0.20
       lookahead_dist: 0.70
       min_lookahead_dist: 0.35
       max_lookahead_dist: 1.20
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 1.2
+      rotate_to_heading_angular_vel: 0.18
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.05
@@ -58,7 +60,7 @@ controller_server:
       regulated_linear_scaling_min_speed: 0.10
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.785
-      max_angular_accel: 2.5
+      max_angular_accel: 0.5
       allow_reversing: false
 
 planner_server:
@@ -111,9 +113,9 @@ behavior_server:
     robot_base_frame: base_link
     transform_tolerance: 0.2
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
-    rotational_acc_lim: 2.5
+    max_rotational_vel: 0.22
+    min_rotational_vel: 0.08
+    rotational_acc_lim: 0.5
 
 waypoint_follower:
   ros__parameters:
@@ -133,10 +135,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.6, 0.0, 1.8]
-    min_velocity: [-0.2, 0.0, -1.8]
-    max_accel: [1.5, 0.0, 2.5]
-    max_decel: [-1.5, 0.0, -2.5]
+    max_velocity: [0.25, 0.0, 0.25]
+    min_velocity: [-0.08, 0.0, -0.25]
+    max_accel: [0.50, 0.0, 0.50]
+    max_decel: [-0.50, 0.0, -0.50]
     odom_topic: odom
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
