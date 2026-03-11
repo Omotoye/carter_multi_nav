@@ -1,6 +1,7 @@
 from functools import partial
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan
@@ -17,10 +18,16 @@ class ScanRelay(Node):
             self.get_parameter("robot_names").get_parameter_value().string_array_value
         )
 
-        qos = QoSProfile(
+        input_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=20,
             reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        output_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=20,
+            reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
         )
 
@@ -30,17 +37,17 @@ class ScanRelay(Node):
             raw_out = f"/rviz/{robot_name}/front_2d_lidar/scan"
             filtered_out = f"/rviz/{robot_name}/scan_filtered"
             self._relay_publishers[(robot_name, "raw")] = self.create_publisher(
-                LaserScan, raw_out, qos
+                LaserScan, raw_out, output_qos
             )
             self._relay_publishers[(robot_name, "filtered")] = self.create_publisher(
-                LaserScan, filtered_out, qos
+                LaserScan, filtered_out, output_qos
             )
             self._relay_subscriptions.append(
                 self.create_subscription(
                     LaserScan,
                     f"/{robot_name}/front_2d_lidar/scan",
                     partial(self._handle_scan, robot_name, "raw"),
-                    qos,
+                    input_qos,
                 )
             )
             self._relay_subscriptions.append(
@@ -48,7 +55,7 @@ class ScanRelay(Node):
                     LaserScan,
                     f"/{robot_name}/scan_filtered",
                     partial(self._handle_scan, robot_name, "filtered"),
-                    qos,
+                    input_qos,
                 )
             )
 
@@ -79,7 +86,7 @@ def main(args=None):
     node = ScanRelay()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         try:

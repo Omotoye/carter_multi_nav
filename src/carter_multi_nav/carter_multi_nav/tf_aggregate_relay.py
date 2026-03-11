@@ -2,8 +2,10 @@ from functools import partial
 
 import rclpy
 from geometry_msgs.msg import TransformStamped
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
 
 from carter_multi_nav.common import DEFAULT_ROBOTS, MAP_FRAME, ROOT_FRAME, prefixed_frame
@@ -17,6 +19,7 @@ class TfAggregateRelay(Node):
         self.declare_parameter("dynamic_suffix", "tf")
         self.declare_parameter("static_suffix", "tf_static")
         self.declare_parameter("shared_map_source", "")
+        self.declare_parameter("shared_map_source_topic", "/shared_map_source")
 
         robot_names = list(
             self.get_parameter("robot_names").get_parameter_value().string_array_value
@@ -30,6 +33,11 @@ class TfAggregateRelay(Node):
         self._shared_map_source = (
             self.get_parameter("shared_map_source").get_parameter_value().string_value
         ).strip()
+        shared_map_source_topic = (
+            self.get_parameter("shared_map_source_topic")
+            .get_parameter_value()
+            .string_value
+        )
 
         dynamic_sub_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -53,6 +61,12 @@ class TfAggregateRelay(Node):
         self._dynamic_pub = self.create_publisher(TFMessage, "/tf", dynamic_pub_qos)
         self._static_pub = self.create_publisher(TFMessage, "/tf_static", static_qos)
         self._relay_subscriptions = []
+        self._source_subscription = self.create_subscription(
+            String,
+            shared_map_source_topic,
+            self._handle_source_update,
+            static_qos,
+        )
 
         for robot_name in robot_names:
             self._relay_subscriptions.append(
@@ -74,6 +88,15 @@ class TfAggregateRelay(Node):
 
         self.get_logger().info(
             "Aggregating TF for robots: %s" % ", ".join(robot_names)
+        )
+
+    def _handle_source_update(self, msg: String):
+        source_name = str(msg.data or "").strip()
+        if not source_name or source_name == self._shared_map_source:
+            return
+        self._shared_map_source = source_name
+        self.get_logger().info(
+            "Using '%s' as the shared map TF source" % self._shared_map_source
         )
 
     def _should_skip(self, robot_name: str, transform: TransformStamped) -> bool:
@@ -128,7 +151,7 @@ def main(args=None):
     node = TfAggregateRelay()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         try:
