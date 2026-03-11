@@ -1,7 +1,12 @@
 import os
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, EmitEvent, LogInfo, RegisterEventHandler
+from launch.actions import (
+    DeclareLaunchArgument,
+    EmitEvent,
+    LogInfo,
+    RegisterEventHandler,
+)
 from launch.conditions import IfCondition
 from launch.events import matches_action
 from launch.substitutions import LaunchConfiguration, AndSubstitution, NotSubstitution
