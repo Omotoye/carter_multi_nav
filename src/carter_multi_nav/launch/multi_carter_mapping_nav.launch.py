@@ -66,6 +66,8 @@ def _launch_setup(context, *_args, **_kwargs):
     nav2_params_file = LaunchConfiguration("nav2_params_file").perform(context)
     laser_filter_file = LaunchConfiguration("laser_filter_file").perform(context)
     log_level = LaunchConfiguration("log_level").perform(context)
+    wait_for_nav_ready = LaunchConfiguration("wait_for_nav_ready").perform(context)
+    nav_ready_timeout = LaunchConfiguration("nav_ready_timeout").perform(context)
 
     for robot_name in robot_names:
         root_x, root_y, root_z, root_yaw = parse_pose_csv(
@@ -87,6 +89,8 @@ def _launch_setup(context, *_args, **_kwargs):
                     "laser_filter_file": laser_filter_file,
                     "autostart": autostart,
                     "log_level": log_level,
+                    "wait_for_nav_ready": wait_for_nav_ready,
+                    "nav_ready_timeout": nav_ready_timeout,
                 }.items(),
             )
         )
@@ -104,6 +108,7 @@ def _launch_setup(context, *_args, **_kwargs):
                         "use_sim_time": _is_true(use_sim_time),
                         "robot_names": robot_names,
                         "shared_map_source": shared_map_source,
+                        "shared_map_source_topic": "/shared_map_source",
                     }
                 ],
             ),
@@ -127,8 +132,10 @@ def _launch_setup(context, *_args, **_kwargs):
                 parameters=[
                     {
                         "use_sim_time": _is_true(use_sim_time),
-                        "source_topic": f"/{shared_map_source}/map",
+                        "robot_names": robot_names,
+                        "preferred_source": shared_map_source,
                         "output_topic": "/shared_map",
+                        "source_name_topic": "/shared_map_source",
                     }
                 ],
             ),
@@ -156,6 +163,9 @@ def generate_launch_description():
         "CYCLONEDDS_URI",
         f"file://{os.path.join(package_dir, 'config', 'cyclonedds_multi_robot.xml')}",
     )
+    default_rmw_implementation = os.environ.get(
+        "RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp"
+    )
 
     return LaunchDescription(
         [
@@ -163,6 +173,8 @@ def generate_launch_description():
             DeclareLaunchArgument("robots", default_value="carter1,carter2,carter3"),
             DeclareLaunchArgument("rviz", default_value="true"),
             DeclareLaunchArgument("autostart", default_value="true"),
+            DeclareLaunchArgument("wait_for_nav_ready", default_value="true"),
+            DeclareLaunchArgument("nav_ready_timeout", default_value="30.0"),
             DeclareLaunchArgument("shared_map_source", default_value="carter1"),
             DeclareLaunchArgument("carter1_pose", default_value=_pose_default("carter1")),
             DeclareLaunchArgument("carter2_pose", default_value=_pose_default("carter2")),
@@ -184,7 +196,14 @@ def generate_launch_description():
                 "cyclonedds_uri",
                 default_value=default_cyclonedds_uri,
             ),
+            DeclareLaunchArgument(
+                "rmw_implementation",
+                default_value=default_rmw_implementation,
+            ),
             SetEnvironmentVariable("CYCLONEDDS_URI", LaunchConfiguration("cyclonedds_uri")),
+            SetEnvironmentVariable(
+                "RMW_IMPLEMENTATION", LaunchConfiguration("rmw_implementation")
+            ),
             OpaqueFunction(function=_launch_setup),
         ]
     )

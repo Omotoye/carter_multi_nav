@@ -41,6 +41,8 @@ def _launch_setup(context, *_args, **_kwargs):
     nav2_params_file = LaunchConfiguration("nav2_params_file").perform(context)
     laser_filter_file = LaunchConfiguration("laser_filter_file").perform(context)
     log_level = LaunchConfiguration("log_level").perform(context)
+    wait_for_nav_ready = LaunchConfiguration("wait_for_nav_ready").perform(context)
+    nav_ready_timeout = LaunchConfiguration("nav_ready_timeout").perform(context)
 
     actions = [
         IncludeLaunchDescription(
@@ -57,6 +59,8 @@ def _launch_setup(context, *_args, **_kwargs):
                 "laser_filter_file": laser_filter_file,
                 "autostart": autostart,
                 "log_level": log_level,
+                "wait_for_nav_ready": wait_for_nav_ready,
+                "nav_ready_timeout": nav_ready_timeout,
             }.items(),
         ),
         Node(
@@ -69,6 +73,7 @@ def _launch_setup(context, *_args, **_kwargs):
                     "use_sim_time": _is_true(use_sim_time),
                     "robot_names": [robot_name],
                     "shared_map_source": robot_name,
+                    "shared_map_source_topic": "/shared_map_source",
                 }
             ],
         ),
@@ -92,8 +97,10 @@ def _launch_setup(context, *_args, **_kwargs):
             parameters=[
                 {
                     "use_sim_time": _is_true(use_sim_time),
-                    "source_topic": f"/{robot_name}/map",
+                    "robot_names": [robot_name],
+                    "preferred_source": robot_name,
                     "output_topic": "/shared_map",
+                    "source_name_topic": "/shared_map_source",
                 }
             ],
         ),
@@ -120,6 +127,9 @@ def generate_launch_description():
         "CYCLONEDDS_URI",
         f"file://{os.path.join(package_dir, 'config', 'cyclonedds_multi_robot.xml')}",
     )
+    default_rmw_implementation = os.environ.get(
+        "RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp"
+    )
 
     return LaunchDescription(
         [
@@ -128,6 +138,8 @@ def generate_launch_description():
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             DeclareLaunchArgument("rviz", default_value="true"),
             DeclareLaunchArgument("autostart", default_value="true"),
+            DeclareLaunchArgument("wait_for_nav_ready", default_value="true"),
+            DeclareLaunchArgument("nav_ready_timeout", default_value="30.0"),
             DeclareLaunchArgument(
                 "slam_params_file",
                 default_value=os.path.join(package_dir, "config", "slam_toolbox_multi.yaml"),
@@ -145,7 +157,14 @@ def generate_launch_description():
                 "cyclonedds_uri",
                 default_value=default_cyclonedds_uri,
             ),
+            DeclareLaunchArgument(
+                "rmw_implementation",
+                default_value=default_rmw_implementation,
+            ),
             SetEnvironmentVariable("CYCLONEDDS_URI", LaunchConfiguration("cyclonedds_uri")),
+            SetEnvironmentVariable(
+                "RMW_IMPLEMENTATION", LaunchConfiguration("rmw_implementation")
+            ),
             OpaqueFunction(function=_launch_setup),
         ]
     )

@@ -27,7 +27,11 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
+            "lifecycle_bringup_gate = carter_multi_nav.lifecycle_bringup_gate:main",
             "map_selector = carter_multi_nav.map_selector:main",
+            "nav2_service_gate = carter_multi_nav.nav2_service_gate:main",
+            "nav_ready_gate = carter_multi_nav.nav_ready_gate:main",
+            "planning_map_clearer = carter_multi_nav.planning_map_clearer:main",
             "scan_motion_diagnostics = carter_multi_nav.scan_motion_diagnostics:main",
             "scan_motion_gate = carter_multi_nav.scan_motion_gate:main",
             "scan_relay = carter_multi_nav.scan_relay:main",
