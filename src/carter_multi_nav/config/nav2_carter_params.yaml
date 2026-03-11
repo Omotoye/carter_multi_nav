@@ -1,7 +1,7 @@
 bt_navigator:
   ros__parameters:
     global_frame: map
-    robot_base_frame: base_link
+    robot_base_frame: base_footprint
     odom_topic: odom
     use_sim_time: true
     bt_loop_duration: 10
@@ -21,7 +21,9 @@ controller_server:
   ros__parameters:
     use_sim_time: true
     controller_frequency: 20.0
-    costmap_update_timeout: 0.30
+    # The motion-safe scan gate may intentionally pause obstacle updates
+    # briefly after fast rotation, so the controller has to tolerate that.
+    costmap_update_timeout: 2.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.0
     min_theta_velocity_threshold: 0.001
@@ -31,8 +33,8 @@ controller_server:
     controller_plugins: ["FollowPath"]
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.25
-      movement_time_allowance: 10.0
+      required_movement_radius: 0.10
+      movement_time_allowance: 20.0
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -47,8 +49,8 @@ controller_server:
       min_lookahead_dist: 0.35
       max_lookahead_dist: 1.20
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 0.18
-      transform_tolerance: 0.2
+      rotate_to_heading_angular_vel: 0.15
+      transform_tolerance: 0.75
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.05
       approach_velocity_scaling_dist: 0.8
@@ -60,7 +62,7 @@ controller_server:
       regulated_linear_scaling_min_speed: 0.10
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.785
-      max_angular_accel: 0.5
+      max_angular_accel: 3.0
       allow_reversing: false
 
 planner_server:
@@ -110,12 +112,12 @@ behavior_server:
       plugin: "nav2_behaviors::Wait"
     local_frame: odom
     global_frame: map
-    robot_base_frame: base_link
-    transform_tolerance: 0.2
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.75
     simulate_ahead_time: 2.0
     max_rotational_vel: 0.22
     min_rotational_vel: 0.08
-    rotational_acc_lim: 0.5
+    rotational_acc_lim: 3.0
 
 waypoint_follower:
   ros__parameters:
@@ -137,8 +139,8 @@ velocity_smoother:
     feedback: "OPEN_LOOP"
     max_velocity: [0.25, 0.0, 0.25]
     min_velocity: [-0.08, 0.0, -0.25]
-    max_accel: [0.50, 0.0, 0.50]
-    max_decel: [-0.50, 0.0, -0.50]
+    max_accel: [0.50, 0.0, 3.00]
+    max_decel: [-0.50, 0.0, -3.00]
     odom_topic: odom
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
@@ -151,31 +153,40 @@ local_costmap:
       update_frequency: 10.0
       publish_frequency: 5.0
       global_frame: odom
-      robot_base_frame: base_link
+      robot_base_frame: base_footprint
+      transform_tolerance: 0.75
       rolling_window: true
       width: 5
       height: 5
       resolution: 0.05
       footprint: "[[0.43, 0.30], [0.43, -0.30], [-0.43, -0.30], [-0.43, 0.30]]"
-      plugins: ["obstacle_layer", "inflation_layer"]
+      plugins: ["obstacle_layer", "denoise_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
+        footprint_clearing_enabled: true
         observation_sources: scan
         scan:
           topic: scan_filtered
           data_type: "LaserScan"
+          observation_persistence: 0.0
+          expected_update_rate: 2.0
           clearing: true
           marking: true
           raytrace_max_range: 8.0
-          raytrace_min_range: 0.0
+          raytrace_min_range: 0.20
           obstacle_max_range: 6.0
-          obstacle_min_range: 0.0
+          obstacle_min_range: 0.30
           max_obstacle_height: 2.0
+      denoise_layer:
+        plugin: "nav2_costmap_2d::DenoiseLayer"
+        enabled: true
+        minimal_group_size: 2
+        group_connectivity_type: 8
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.65
+        inflation_radius: 0.40
       always_send_full_costmap: true
 
 global_costmap:
@@ -185,32 +196,19 @@ global_costmap:
       update_frequency: 2.0
       publish_frequency: 1.0
       global_frame: map
-      robot_base_frame: base_link
+      robot_base_frame: base_footprint
+      transform_tolerance: 0.75
       resolution: 0.05
       track_unknown_space: true
-      footprint: "[[0.43, 0.30], [0.43, -0.30], [-0.43, -0.30], [-0.43, 0.30]]"
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # Keep the local costmap on the true vehicle footprint, but give the
+      # global planner a slightly smaller footprint so startup map-edge
+      # artifacts do not immediately mark the robot's start state occupied.
+      footprint: "[[0.28, 0.20], [0.28, -0.20], [-0.28, -0.20], [-0.28, 0.20]]"
+      plugins: ["static_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
+        map_topic: planning_map
         map_subscribe_transient_local: true
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: true
-        observation_sources: scan
-        scan:
-          topic: scan_filtered
-          data_type: "LaserScan"
-          clearing: true
-          marking: true
-          raytrace_max_range: 8.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 6.0
-          obstacle_min_range: 0.0
-          max_obstacle_height: 2.0
-      inflation_layer:
-        plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.70
       always_send_full_costmap: true
 
 lifecycle_manager_navigation:
