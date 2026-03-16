@@ -137,57 +137,79 @@ LocalizedRangeScan * DecentralizedMultiRobotSlamToolbox::addExternalScan(
   Pose2 & odom_pose)
 /*****************************************************************************/
 {
-  // get our localized range scan
+  // Get the localized range scan from the peer's reported pose
   LocalizedRangeScan * range_scan = getLocalizedRangeScan(
     laser, scan, odom_pose);
 
-  // Add the localized range scan to the smapper
   boost::mutex::scoped_lock lock(smapper_mutex_);
-  bool processed = false, update_reprocessing_transform = false;
 
+  // ---------------------------------------------------------------
+  // Map-only processing for peer scans:
+  // We scan-match against nearby nodes to get a corrected pose (so the
+  // peer's data renders correctly in the map), but we do NOT add
+  // vertices, edges, or attempt loop closures.  This prevents the
+  // peer scan from perturbing the host robot's pose graph, which is
+  // the root cause of the map-to-odom TF micro-jitter and double-wall
+  // artifacts in the shared map.
+  // ---------------------------------------------------------------
+
+  // The mapper must be initialized before we can use the scan matcher
+  karto::LaserRangeFinder * pLaserRangeFinder = range_scan->GetLaserRangeFinder();
+  if (pLaserRangeFinder == nullptr ||
+      pLaserRangeFinder->Validate(range_scan) == false)
+  {
+    delete range_scan;
+    return nullptr;
+  }
+
+  // Ensure the mapper is initialized (it auto-initializes on first Process,
+  // but external scans may arrive before any host scan is processed)
+  karto::ScanMatcher * pScanMatcher = smapper_->getMapper()->GetSequentialScanMatcher();
+  if (pScanMatcher == nullptr) {
+    // Mapper not yet initialized — initialize it now so scan matching works
+    smapper_->getMapper()->Initialize(pLaserRangeFinder->GetRangeThreshold());
+    pScanMatcher = smapper_->getMapper()->GetSequentialScanMatcher();
+  }
+
+  // Scan-match against the nearest existing node to refine the pose
+  // without creating any graph constraints
   Matrix3 covariance;
   covariance.SetToIdentity();
 
-  if (processor_type_ == PROCESS) {
-    processed = smapper_->getMapper()->Process(range_scan, &covariance);
-  } else if (processor_type_ == PROCESS_FIRST_NODE) {
-    processed = smapper_->getMapper()->ProcessAtDock(range_scan, &covariance);
-    processor_type_ = PROCESS;
-    update_reprocessing_transform = true;
-  } else if (processor_type_ == PROCESS_NEAR_REGION) {
-    boost::mutex::scoped_lock l(pose_mutex_);
-    if (!process_near_pose_) {
-      RCLCPP_ERROR(
-        get_logger(), "Process near region called without a "
-        "valid region request. Ignoring scan.");
-      return nullptr;
+  if (pScanMatcher != nullptr) {
+    // Find the closest existing scan to match against
+    karto::MapperGraph * pGraph = smapper_->getMapper()->GetGraph();
+    if (pGraph != nullptr) {
+      auto * closestVertex = pGraph->FindNearByScan(
+        range_scan->GetSensorName(), range_scan->GetOdometricPose());
+
+      if (closestVertex != nullptr) {
+        // Build a minimal running-scan set from the nearby node
+        LocalizedRangeScanVector nearbyScans;
+        nearbyScans.push_back(closestVertex->GetObject());
+
+        Pose2 bestPose;
+        pScanMatcher->MatchScan(
+          range_scan, nearbyScans, bestPose, covariance);
+        range_scan->SetSensorPose(bestPose);
+      }
     }
-    range_scan->SetOdometricPose(*process_near_pose_);
-    range_scan->SetCorrectedPose(range_scan->GetOdometricPose());
-    process_near_pose_.reset(nullptr);
-    processed = smapper_->getMapper()->ProcessAgainstNodesNearBy(
-      range_scan, false, &covariance);
-    update_reprocessing_transform = true;
-    processor_type_ = PROCESS;
-  } else {
-    RCLCPP_FATAL(
-      get_logger(), "SlamToolbox: No valid processor type set! Exiting.");
-    exit(-1);
   }
 
-  // if successfully processed, create odom to map transformation
-  // and add our scan to storage
-  if (processed) {
-    if (enable_interactive_mode_) {
-      scan_holder_->addScan(*scan);
-    }
-  } else {
-    delete range_scan;
-    range_scan = nullptr;
+  // Store the scan for map rendering (occupancy grid generation)
+  // but do NOT add it to the graph or trigger loop closures
+  if (enable_interactive_mode_) {
+    scan_holder_->addScan(*scan);
   }
+
+  // Add scan to the sensor manager so it appears in the occupancy grid,
+  // but skip AddVertex/AddEdges/TryCloseLoop
+  smapper_->getMapper()->GetMapperSensorManager()->AddScan(range_scan);
+  dataset_->Add(range_scan);
 
   return range_scan;
 }
+
 
 /*****************************************************************************/
 LaserRangeFinder * DecentralizedMultiRobotSlamToolbox::getLaser(

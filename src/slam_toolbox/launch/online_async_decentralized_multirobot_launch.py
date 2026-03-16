@@ -24,6 +24,7 @@ def generate_launch_description():
     slam_params_file = LaunchConfiguration('slam_params_file')
     use_sim_time = LaunchConfiguration('use_sim_time')
     namespace = LaunchConfiguration('namespace')
+    scan_share_topic = LaunchConfiguration('scan_share_topic')
 
     # Topic remappings
     remappings = [  ('/map', 'map'),
@@ -52,13 +53,18 @@ def generate_launch_description():
         default_value='robot1',
         description='Robot Name / Namespace. '
                     'Each slam_toolbox instance should run in a different namespace')
+    declare_scan_share_topic_argument = DeclareLaunchArgument(
+        'scan_share_topic',
+        default_value='/localized_scan',
+        description='Topic used to exchange LocalizedLaserScan messages between robots')
 
     start_async_slam_toolbox_node = LifecycleNode(
         parameters=[
           ParameterFile(slam_params_file, allow_substs=True),
           {
             'use_lifecycle_manager': use_lifecycle_manager,
-            'use_sim_time': use_sim_time
+            'use_sim_time': use_sim_time,
+            'scan_share_topic': scan_share_topic
           }
         ],
         package='slam_toolbox',
@@ -99,6 +105,7 @@ def generate_launch_description():
     ld.add_action(declare_slam_params_file_cmd)
     ld.add_action(declare_use_sim_time_argument)
     ld.add_action(declare_robot_name_argument)
+    ld.add_action(declare_scan_share_topic_argument)
 
     ld.add_action(start_async_slam_toolbox_node)
     ld.add_action(configure_event)
