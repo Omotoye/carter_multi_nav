@@ -33,8 +33,8 @@ controller_server:
     controller_plugins: ["FollowPath"]
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.10
-      movement_time_allowance: 20.0
+      required_movement_radius: 0.02
+      movement_time_allowance: 45.0
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -42,24 +42,22 @@ controller_server:
       yaw_goal_tolerance: 0.20
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      # Conservative defaults: this scan stream degrades noticeably under
-      # aggressive robot rotation, so slow the platform down by default.
-      desired_linear_vel: 0.20
-      lookahead_dist: 0.70
-      min_lookahead_dist: 0.35
-      max_lookahead_dist: 1.20
+      desired_linear_vel: 0.80
+      lookahead_dist: 1.00
+      min_lookahead_dist: 0.50
+      max_lookahead_dist: 2.00
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 0.15
+      rotate_to_heading_angular_vel: 0.45
       transform_tolerance: 0.75
       use_velocity_scaled_lookahead_dist: true
-      min_approach_linear_velocity: 0.05
-      approach_velocity_scaling_dist: 0.8
+      min_approach_linear_velocity: 0.20
+      approach_velocity_scaling_dist: 1.2
       use_collision_detection: true
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.10
+      regulated_linear_scaling_min_speed: 0.20
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.785
       max_angular_accel: 3.0
@@ -115,7 +113,7 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.75
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.22
+    max_rotational_vel: 0.66
     min_rotational_vel: 0.08
     rotational_acc_lim: 3.0
 
@@ -137,10 +135,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.25, 0.0, 0.25]
-    min_velocity: [-0.08, 0.0, -0.25]
-    max_accel: [0.50, 0.0, 3.00]
-    max_decel: [-0.50, 0.0, -3.00]
+    max_velocity: [0.80, 0.0, 0.75]
+    min_velocity: [-0.08, 0.0, -0.75]
+    max_accel: [1.00, 0.0, 3.00]
+    max_decel: [-1.00, 0.0, -3.00]
     odom_topic: odom
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
@@ -185,8 +183,8 @@ local_costmap:
         group_connectivity_type: 8
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.40
+        cost_scaling_factor: 1.0
+        inflation_radius: 0.65
       always_send_full_costmap: true
 
 global_costmap:
@@ -204,11 +202,15 @@ global_costmap:
       # global planner a slightly smaller footprint so startup map-edge
       # artifacts do not immediately mark the robot's start state occupied.
       footprint: "[[0.28, 0.20], [0.28, -0.20], [-0.28, -0.20], [-0.28, 0.20]]"
-      plugins: ["static_layer"]
+      plugins: ["static_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_topic: planning_map
         map_subscribe_transient_local: true
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 1.0
+        inflation_radius: 0.65
       always_send_full_costmap: true
 
 lifecycle_manager_navigation:

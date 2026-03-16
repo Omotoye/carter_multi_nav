@@ -30,6 +30,12 @@ def _launch_setup(context, *_args, **_kwargs):
         context
     )
     lifecycle_ready_timeout_value = float(lifecycle_ready_timeout)
+    nav_target_linear_speed = float(
+        LaunchConfiguration("nav_target_linear_speed").perform(context)
+    )
+    lookahead_dist = max(1.0, nav_target_linear_speed * 2.5)
+    min_lookahead_dist = max(0.5, nav_target_linear_speed * 1.25)
+    max_lookahead_dist = max(2.0, nav_target_linear_speed * 5.0)
 
     remappings = [
         ("/tf", "tf"),
@@ -48,6 +54,10 @@ def _launch_setup(context, *_args, **_kwargs):
             param_rewrites={
                 "use_sim_time": use_sim_time,
                 "autostart": autostart,
+                "desired_linear_vel": f"{nav_target_linear_speed:.3f}",
+                "lookahead_dist": f"{lookahead_dist:.3f}",
+                "min_lookahead_dist": f"{min_lookahead_dist:.3f}",
+                "max_lookahead_dist": f"{max_lookahead_dist:.3f}",
             },
             convert_types=True,
         ),
@@ -187,6 +197,7 @@ def generate_launch_description():
             DeclareLaunchArgument("use_respawn", default_value="false"),
             DeclareLaunchArgument("log_level", default_value="info"),
             DeclareLaunchArgument("lifecycle_ready_timeout", default_value="45.0"),
+            DeclareLaunchArgument("nav_target_linear_speed", default_value="0.80"),
             SetEnvironmentVariable("RCUTILS_LOGGING_BUFFERED_STREAM", "1"),
             OpaqueFunction(function=_launch_setup),
         ]
