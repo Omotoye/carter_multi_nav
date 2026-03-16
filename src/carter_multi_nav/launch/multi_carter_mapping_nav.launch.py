@@ -43,22 +43,7 @@ def _launch_setup(context, *_args, **_kwargs):
             % (", ".join(unsupported), ", ".join(DEFAULT_ROBOTS))
         )
 
-    shared_map_source = LaunchConfiguration("shared_map_source").perform(context).strip()
-    if not shared_map_source:
-        shared_map_source = robot_names[0]
-
     actions = []
-    if shared_map_source not in robot_names:
-        fallback = robot_names[0]
-        actions.append(
-            LogInfo(
-                msg=(
-                    f"Requested shared_map_source '{shared_map_source}' is not active; "
-                    f"falling back to '{fallback}'."
-                )
-            )
-        )
-        shared_map_source = fallback
 
     use_sim_time = LaunchConfiguration("use_sim_time").perform(context)
     autostart = LaunchConfiguration("autostart").perform(context)
@@ -68,6 +53,40 @@ def _launch_setup(context, *_args, **_kwargs):
     log_level = LaunchConfiguration("log_level").perform(context)
     wait_for_nav_ready = LaunchConfiguration("wait_for_nav_ready").perform(context)
     nav_ready_timeout = LaunchConfiguration("nav_ready_timeout").perform(context)
+    scan_gate_max_rotation_per_scan_deg = LaunchConfiguration(
+        "scan_gate_max_rotation_per_scan_deg"
+    ).perform(context)
+    scan_gate_max_angular_velocity = LaunchConfiguration(
+        "scan_gate_max_angular_velocity"
+    ).perform(context)
+    scan_gate_holdoff_after_rotation = LaunchConfiguration(
+        "scan_gate_holdoff_after_rotation"
+    ).perform(context)
+    slam_peer_exclusion_enabled = LaunchConfiguration(
+        "slam_peer_exclusion_enabled"
+    ).perform(context)
+    slam_share_localized_scans = LaunchConfiguration(
+        "slam_share_localized_scans"
+    ).perform(context)
+    shared_map_source = LaunchConfiguration("shared_map_source").perform(context).strip()
+    if shared_map_source not in robot_names:
+        shared_map_source = robot_names[0]
+    peer_exclusion_margin = LaunchConfiguration("peer_exclusion_margin").perform(context)
+    nav_target_linear_speed = LaunchConfiguration("nav_target_linear_speed").perform(
+        context
+    )
+    map_tf_smoothing_enabled = LaunchConfiguration(
+        "map_tf_smoothing_enabled"
+    ).perform(context)
+    map_tf_smoothing_alpha = LaunchConfiguration("map_tf_smoothing_alpha").perform(
+        context
+    )
+    map_tf_max_translation_jump = LaunchConfiguration(
+        "map_tf_max_translation_jump"
+    ).perform(context)
+    map_tf_max_rotation_jump = LaunchConfiguration(
+        "map_tf_max_rotation_jump"
+    ).perform(context)
 
     for robot_name in robot_names:
         root_x, root_y, root_z, root_yaw = parse_pose_csv(
@@ -91,13 +110,20 @@ def _launch_setup(context, *_args, **_kwargs):
                     "log_level": log_level,
                     "wait_for_nav_ready": wait_for_nav_ready,
                     "nav_ready_timeout": nav_ready_timeout,
+                    "all_robot_names": ",".join(robot_names),
+                    "scan_gate_max_rotation_per_scan_deg": scan_gate_max_rotation_per_scan_deg,
+                    "scan_gate_max_angular_velocity": scan_gate_max_angular_velocity,
+                    "scan_gate_holdoff_after_rotation": scan_gate_holdoff_after_rotation,
+                    "slam_peer_exclusion_enabled": slam_peer_exclusion_enabled,
+                    "slam_share_localized_scans": slam_share_localized_scans,
+                    "peer_exclusion_margin": peer_exclusion_margin,
+                    "nav_target_linear_speed": nav_target_linear_speed,
                 }.items(),
             )
         )
 
     actions.extend(
         [
-            LogInfo(msg=f"Using '{shared_map_source}' as the shared RViz map source."),
             Node(
                 package="carter_multi_nav",
                 executable="tf_aggregate_relay",
@@ -108,7 +134,25 @@ def _launch_setup(context, *_args, **_kwargs):
                         "use_sim_time": _is_true(use_sim_time),
                         "robot_names": robot_names,
                         "shared_map_source": shared_map_source,
-                        "shared_map_source_topic": "/shared_map_source",
+                        "map_tf_smoothing_enabled": _is_true(map_tf_smoothing_enabled),
+                        "map_tf_smoothing_alpha": float(map_tf_smoothing_alpha),
+                        "map_tf_max_translation_jump": float(
+                            map_tf_max_translation_jump
+                        ),
+                        "map_tf_max_rotation_jump": float(map_tf_max_rotation_jump),
+                    }
+                ],
+            ),
+            Node(
+                package="carter_multi_nav",
+                executable="map_selector",
+                name="map_selector",
+                output="screen",
+                parameters=[
+                    {
+                        "use_sim_time": _is_true(use_sim_time),
+                        "robot_names": robot_names,
+                        "preferred_source": shared_map_source,
                     }
                 ],
             ),
@@ -126,21 +170,37 @@ def _launch_setup(context, *_args, **_kwargs):
             ),
             Node(
                 package="carter_multi_nav",
-                executable="map_selector",
-                name="map_selector",
+                executable="multi_robot_viz",
+                name="multi_robot_viz",
                 output="screen",
                 parameters=[
                     {
                         "use_sim_time": _is_true(use_sim_time),
                         "robot_names": robot_names,
-                        "preferred_source": shared_map_source,
-                        "output_topic": "/shared_map",
-                        "source_name_topic": "/shared_map_source",
+                        "enable_shared_map_merge": False,
                     }
                 ],
             ),
         ]
     )
+
+    if _is_true(LaunchConfiguration("rviz_goal_router").perform(context)):
+        actions.append(
+            Node(
+                package="carter_multi_nav",
+                executable="rviz_goal_router",
+                name="rviz_goal_router",
+                output="screen",
+                parameters=[
+                    {
+                        "use_sim_time": _is_true(use_sim_time),
+                        "robot_names": robot_names,
+                        "input_topic": "/goal_pose",
+                        "action_name": "navigate_to_pose",
+                    }
+                ],
+            )
+        )
 
     if _is_true(LaunchConfiguration("rviz").perform(context)):
         actions.append(
@@ -172,9 +232,23 @@ def generate_launch_description():
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             DeclareLaunchArgument("robots", default_value="carter1,carter2,carter3"),
             DeclareLaunchArgument("rviz", default_value="true"),
+            DeclareLaunchArgument("rviz_goal_router", default_value="true"),
             DeclareLaunchArgument("autostart", default_value="true"),
             DeclareLaunchArgument("wait_for_nav_ready", default_value="true"),
             DeclareLaunchArgument("nav_ready_timeout", default_value="30.0"),
+            DeclareLaunchArgument(
+                "scan_gate_max_rotation_per_scan_deg", default_value="1.25"
+            ),
+            DeclareLaunchArgument("scan_gate_max_angular_velocity", default_value="0.25"),
+            DeclareLaunchArgument("scan_gate_holdoff_after_rotation", default_value="0.40"),
+            DeclareLaunchArgument("slam_peer_exclusion_enabled", default_value="false"),
+            DeclareLaunchArgument("slam_share_localized_scans", default_value="true"),
+            DeclareLaunchArgument("peer_exclusion_margin", default_value="0.10"),
+            DeclareLaunchArgument("nav_target_linear_speed", default_value="0.80"),
+            DeclareLaunchArgument("map_tf_smoothing_enabled", default_value="true"),
+            DeclareLaunchArgument("map_tf_smoothing_alpha", default_value="0.30"),
+            DeclareLaunchArgument("map_tf_max_translation_jump", default_value="0.05"),
+            DeclareLaunchArgument("map_tf_max_rotation_jump", default_value="0.02"),
             DeclareLaunchArgument("shared_map_source", default_value="carter1"),
             DeclareLaunchArgument("carter1_pose", default_value=_pose_default("carter1")),
             DeclareLaunchArgument("carter2_pose", default_value=_pose_default("carter2")),

@@ -45,6 +45,9 @@ def prefixed_frame(robot_name: str, frame_id: str) -> str:
         return frame
     if frame == ROOT_FRAME:
         return frame
+    for known_robot in DEFAULT_ROBOTS:
+        if frame.startswith(f"{known_robot}/"):
+            return frame
     if frame.startswith(f"{robot_name}/"):
         return frame
     return f"{robot_name}/{frame}"

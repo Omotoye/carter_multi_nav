@@ -86,6 +86,35 @@ def _launch_setup(context, *_args, **_kwargs):
     log_level = LaunchConfiguration("log_level").perform(context)
     wait_for_nav_ready = LaunchConfiguration("wait_for_nav_ready").perform(context)
     nav_ready_timeout = LaunchConfiguration("nav_ready_timeout").perform(context)
+    scan_gate_max_rotation_per_scan_deg = float(
+        LaunchConfiguration("scan_gate_max_rotation_per_scan_deg").perform(context)
+    )
+    scan_gate_max_angular_velocity = float(
+        LaunchConfiguration("scan_gate_max_angular_velocity").perform(context)
+    )
+    scan_gate_holdoff_after_rotation = float(
+        LaunchConfiguration("scan_gate_holdoff_after_rotation").perform(context)
+    )
+    all_robot_names = [
+        value.strip()
+        for value in LaunchConfiguration("all_robot_names").perform(context).split(",")
+        if value.strip()
+    ]
+    if not all_robot_names:
+        all_robot_names = [robot_name]
+    slam_peer_exclusion_enabled = _is_true(
+        LaunchConfiguration("slam_peer_exclusion_enabled").perform(context)
+    )
+    slam_share_localized_scans = _is_true(
+        LaunchConfiguration("slam_share_localized_scans").perform(context)
+    )
+    peer_exclusion_margin = float(
+        LaunchConfiguration("peer_exclusion_margin").perform(context)
+    )
+    nav_target_linear_speed = LaunchConfiguration("nav_target_linear_speed").perform(
+        context
+    )
+    scan_share_topic = "/localized_scan" if slam_share_localized_scans else "localized_scan"
     use_sim_time_bool = _is_true(use_sim_time)
 
     nav2_launch_arguments = {
@@ -94,6 +123,7 @@ def _launch_setup(context, *_args, **_kwargs):
         "autostart": autostart,
         "params_file": nav2_params_file,
         "log_level": log_level,
+        "nav_target_linear_speed": nav_target_linear_speed,
     }
 
     def _launch_nav2_after_gate(event, _context):
@@ -171,6 +201,33 @@ def _launch_setup(context, *_args, **_kwargs):
                 ("/tf_static", "tf_static"),
             ],
         ),
+    ]
+
+    scan_gate_input_topic = "scan_filtered"
+    if slam_peer_exclusion_enabled:
+        actions.append(
+            Node(
+                package="carter_multi_nav",
+                executable="scan_peer_exclusion",
+                name="scan_peer_exclusion",
+                namespace=robot_name,
+                output="screen",
+                parameters=[
+                    {
+                        "use_sim_time": use_sim_time_bool,
+                        "robot_name": robot_name,
+                        "robot_names": all_robot_names,
+                        "scan_in": "scan_filtered",
+                        "scan_out": "scan_peer_filtered",
+                        "peer_exclusion_margin": peer_exclusion_margin,
+                    }
+                ],
+            )
+        )
+        scan_gate_input_topic = "scan_peer_filtered"
+
+    actions.extend(
+        [
         Node(
             package="carter_multi_nav",
             executable="scan_motion_gate",
@@ -180,12 +237,12 @@ def _launch_setup(context, *_args, **_kwargs):
             parameters=[
                 {
                     "use_sim_time": use_sim_time_bool,
-                    "scan_in": "scan_filtered",
+                    "scan_in": scan_gate_input_topic,
                     "scan_out": "scan_motion_safe",
                     "odom_topic": "chassis/odom",
-                    "max_rotation_per_scan_deg": 1.25,
-                    "max_angular_velocity": 0.25,
-                    "holdoff_after_rotation": 0.40,
+                    "max_rotation_per_scan_deg": scan_gate_max_rotation_per_scan_deg,
+                    "max_angular_velocity": scan_gate_max_angular_velocity,
+                    "holdoff_after_rotation": scan_gate_holdoff_after_rotation,
                 }
             ],
         ),
@@ -198,6 +255,8 @@ def _launch_setup(context, *_args, **_kwargs):
             parameters=[
                 {
                     "use_sim_time": use_sim_time_bool,
+                    "robot_name": robot_name,
+                    "robot_names": all_robot_names,
                     "input_topic": "map",
                     "output_topic": "planning_map",
                     "map_frame": "map",
@@ -214,9 +273,11 @@ def _launch_setup(context, *_args, **_kwargs):
                 "use_sim_time": use_sim_time,
                 "autostart": autostart,
                 "slam_params_file": slam_params_file,
+                "scan_share_topic": scan_share_topic,
             }.items(),
         ),
-    ]
+        ]
+    )
 
     if _is_true(wait_for_nav_ready):
         nav_ready_gate = Node(
@@ -278,6 +339,16 @@ def generate_launch_description():
             DeclareLaunchArgument("log_level", default_value="info"),
             DeclareLaunchArgument("wait_for_nav_ready", default_value="true"),
             DeclareLaunchArgument("nav_ready_timeout", default_value="30.0"),
+            DeclareLaunchArgument("all_robot_names", default_value=""),
+            DeclareLaunchArgument(
+                "scan_gate_max_rotation_per_scan_deg", default_value="1.25"
+            ),
+            DeclareLaunchArgument("scan_gate_max_angular_velocity", default_value="0.25"),
+            DeclareLaunchArgument("scan_gate_holdoff_after_rotation", default_value="0.40"),
+            DeclareLaunchArgument("slam_peer_exclusion_enabled", default_value="false"),
+            DeclareLaunchArgument("slam_share_localized_scans", default_value="true"),
+            DeclareLaunchArgument("peer_exclusion_margin", default_value="0.10"),
+            DeclareLaunchArgument("nav_target_linear_speed", default_value="0.80"),
             OpaqueFunction(function=_launch_setup),
         ]
     )
