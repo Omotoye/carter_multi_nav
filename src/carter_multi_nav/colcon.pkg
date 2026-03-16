@@ -1,0 +1,5 @@
+{
+  "hooks": [
+    "share/carter_multi_nav/hook/cyclonedds_multi_robot.sh"
+  ]
+}

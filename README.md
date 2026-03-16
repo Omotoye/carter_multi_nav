@@ -86,6 +86,10 @@ colcon build --symlink-install --allow-overriding slam_toolbox --packages-up-to 
 source install/setup.bash
 ```
 
+After sourcing the workspace, the package hook exports the CycloneDDS settings used by
+the launch files. Use `carter_ros2 ...` for CLI inspection and goal sending so the ROS 2
+daemon is reset before graph queries and namespaced actions/topics show up consistently.
+
 Why `--allow-overriding slam_toolbox` is required:
 
 - this repo vendors `src/slam_toolbox`
@@ -115,6 +119,9 @@ Useful launch arguments:
 - `shared_map_source:=carter1`
 - `rviz:=true`
 - `use_sim_time:=true`
+- `scan_gate_max_rotation_per_scan_deg:=1.5`
+- `scan_gate_max_angular_velocity:=0.30`
+- `scan_gate_holdoff_after_rotation:=0.10`
 - `carter1_pose:=0.0,0.0,0.0,3.141592653589793`
 - `carter2_pose:=4.0,-1.0,0.0,3.141592653589793`
 - `carter3_pose:=7.0,3.0,0.0,3.141592653589793`
@@ -136,7 +143,7 @@ The current RViz setup is visualization-first. It does not yet provide a per-rob
 First, confirm the actions are available:
 
 ```bash
-ros2 action list | grep navigate_to_pose
+carter_ros2 action list | grep navigate_to_pose
 ```
 
 Expected:
@@ -152,7 +159,7 @@ Then send a goal to a specific robot.
 Example for `carter1`:
 
 ```bash
-ros2 action send_goal /carter1/navigate_to_pose nav2_msgs/action/NavigateToPose \
+carter_ros2 action send_goal /carter1/navigate_to_pose nav2_msgs/action/NavigateToPose \
 '{
   pose: {
     header: {frame_id: map},
@@ -167,7 +174,7 @@ ros2 action send_goal /carter1/navigate_to_pose nav2_msgs/action/NavigateToPose 
 Example for `carter2`:
 
 ```bash
-ros2 action send_goal /carter2/navigate_to_pose nav2_msgs/action/NavigateToPose \
+carter_ros2 action send_goal /carter2/navigate_to_pose nav2_msgs/action/NavigateToPose \
 '{
   pose: {
     header: {frame_id: map},
@@ -189,9 +196,9 @@ Guidance:
 Useful checks while testing:
 
 ```bash
-ros2 action info /carter1/navigate_to_pose
-ros2 topic echo /carter1/cmd_vel --once
-ros2 topic echo /carter1/plan --once
+carter_ros2 action info /carter1/navigate_to_pose
+carter_ros2 topic echo /carter1/cmd_vel --once
+carter_ros2 topic echo /carter1/plan --once
 ```
 
 ## Scan Diagnostics

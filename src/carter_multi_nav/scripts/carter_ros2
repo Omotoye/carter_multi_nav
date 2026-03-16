@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+prefix_dir="$(cd "${script_dir}/.." && pwd)"
+share_dir="${prefix_dir}/share/carter_multi_nav"
+
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI="file://${share_dir}/config/cyclonedds_multi_robot.xml"
+
+if [[ "${1:-}" != "daemon" ]]; then
+  ros2 daemon stop >/dev/null 2>&1 || true
+fi
+
+exec ros2 "$@"

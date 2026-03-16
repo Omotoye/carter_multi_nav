@@ -1,0 +1,47 @@
+scenarios:
+  isolated_straight:
+    goals:
+      - label: carter1_isolated
+        robot: carter1
+        x: -0.55
+        y: -0.10
+        yaw: 3.141592653589793
+      - label: carter2_isolated
+        robot: carter2
+        x: 3.50
+        y: -1.00
+        yaw: 3.141592653589793
+      - label: carter3_isolated
+        robot: carter3
+        x: 6.00
+        y: 3.00
+        yaw: 3.141592653589793
+  clustered_breakout:
+    goals:
+      - label: carter1_breakout
+        robot: carter1
+        x: -0.35
+        y: -0.10
+        yaw: 3.141592653589793
+      - label: carter2_breakout
+        robot: carter2
+        x: 3.20
+        y: -1.00
+        yaw: 3.141592653589793
+      - label: carter3_breakout
+        robot: carter3
+        x: 6.30
+        y: 3.00
+        yaw: 3.141592653589793
+  close_pass_corridor:
+    goals:
+      - label: carter2_close_pass
+        robot: carter2
+        x: 4.20
+        y: -0.20
+        yaw: 1.5707963267948966
+      - label: carter3_close_pass
+        robot: carter3
+        x: 5.80
+        y: 2.10
+        yaw: -1.5707963267948966

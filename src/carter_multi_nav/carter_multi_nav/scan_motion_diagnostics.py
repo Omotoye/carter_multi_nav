@@ -9,6 +9,8 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 
+from carter_multi_nav.report_utils import append_csv, ensure_output_dir, write_json
+
 
 def _safe_median(values):
     return median(values) if values else None
@@ -49,6 +51,7 @@ class ScanMotionDiagnostics(Node):
         self.declare_parameter("window_size", 200)
         self.declare_parameter("rotation_target_deg", 2.0)
         self.declare_parameter("stale_odom_timeout", 0.5)
+        self.declare_parameter("output_dir", "")
 
         robot_name = self.get_parameter("robot_name").get_parameter_value().string_value
         scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
@@ -63,11 +66,19 @@ class ScanMotionDiagnostics(Node):
         self._stale_odom_timeout = (
             self.get_parameter("stale_odom_timeout").get_parameter_value().double_value
         )
+        self._output_dir = ensure_output_dir(
+            self.get_parameter("output_dir").get_parameter_value().string_value
+        )
+        self._json_path = ""
+        self._csv_path = ""
 
         if not scan_topic:
             scan_topic = f"/{robot_name}/front_2d_lidar/scan"
         if not odom_topic:
             odom_topic = f"/{robot_name}/chassis/odom"
+        if self._output_dir:
+            self._json_path = f"{self._output_dir}/scan_motion_{robot_name}.json"
+            self._csv_path = f"{self._output_dir}/scan_motion_{robot_name}.csv"
 
         sensor_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -246,7 +257,59 @@ class ScanMotionDiagnostics(Node):
             for recommendation in recommendations:
                 lines.append("    - %s" % recommendation)
 
+        summary = {
+            "robot_name": self._robot_name,
+            "scan_topic": self._scan_topic,
+            "odom_topic": self._odom_topic,
+            "scans_observed": self._scan_count,
+            "median_receipt_period_sec": receipt_period,
+            "median_stamp_period_sec": stamp_period,
+            "median_reported_scan_time_sec": scan_time,
+            "median_effective_scan_duration_sec": self._effective_scan_duration(scan_time),
+            "median_stamp_lag_sec": lag,
+            "median_angular_velocity_rad_s": omega,
+            "peak_angular_velocity_rad_s": peak_omega,
+            "median_rotation_per_scan_deg": rotation_deg,
+            "peak_rotation_per_scan_deg": peak_rotation_deg,
+            "angle_increment_sign_flips": self._angle_increment_sign_flips,
+            "metadata_sample_count": self._metadata_sample_count,
+            "metadata_mismatch_count": self._metadata_mismatch_count,
+            "metadata_mismatch_ratio": (
+                self._metadata_mismatch_count / float(self._metadata_sample_count)
+                if self._metadata_sample_count > 0
+                else None
+            ),
+            "rotation_target_deg": self._rotation_target_deg,
+            "stale_odom_timeout_sec": self._stale_odom_timeout,
+            "recommendations": recommendations,
+        }
+        self._write_summary(summary)
         self.get_logger().info("\n".join(lines))
+
+    def _write_summary(self, summary):
+        if not self._output_dir:
+            return
+
+        write_json(self._json_path, summary)
+        append_csv(
+            self._csv_path,
+            [
+                "robot_name",
+                "scans_observed",
+                "median_receipt_period_sec",
+                "median_stamp_period_sec",
+                "median_reported_scan_time_sec",
+                "median_effective_scan_duration_sec",
+                "median_stamp_lag_sec",
+                "median_angular_velocity_rad_s",
+                "peak_angular_velocity_rad_s",
+                "median_rotation_per_scan_deg",
+                "peak_rotation_per_scan_deg",
+                "metadata_mismatch_ratio",
+                "angle_increment_sign_flips",
+            ],
+            summary,
+        )
 
     def _build_recommendations(
         self,
