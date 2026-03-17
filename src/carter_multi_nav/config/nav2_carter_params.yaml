@@ -71,13 +71,13 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_smac_planner::SmacPlanner2D"
-      tolerance: 0.25
+      tolerance: 0.30
       downsample_costmap: false
       downsampling_factor: 1
       allow_unknown: true
       max_iterations: 1000000
       max_on_approach_iterations: 1000
-      max_planning_time: 2.0
+      max_planning_time: 3.5
       motion_model_for_search: "MOORE"
       cost_travel_multiplier: 2.0
 
@@ -183,8 +183,8 @@ local_costmap:
         group_connectivity_type: 8
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.0
-        inflation_radius: 0.65
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
       always_send_full_costmap: true
 
 global_costmap:
@@ -202,15 +202,32 @@ global_costmap:
       # global planner a slightly smaller footprint so startup map-edge
       # artifacts do not immediately mark the robot's start state occupied.
       footprint: "[[0.28, 0.20], [0.28, -0.20], [-0.28, -0.20], [-0.28, 0.20]]"
-      plugins: ["static_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_topic: planning_map
         map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        footprint_clearing_enabled: true
+        observation_sources: scan
+        scan:
+          topic: scan_filtered
+          data_type: "LaserScan"
+          observation_persistence: 0.0
+          expected_update_rate: 2.0
+          clearing: true
+          marking: true
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.20
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.30
+          max_obstacle_height: 2.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.0
-        inflation_radius: 0.65
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
       always_send_full_costmap: true
 
 lifecycle_manager_navigation:
