@@ -23,6 +23,25 @@ def _yaw_from_quaternion(quaternion) -> float:
     return math.atan2(siny_cosp, cosy_cosp)
 
 
+def _parse_root_poses(raw_value: str):
+    root_poses = dict(DEFAULT_ROOT_POSES)
+    text = str(raw_value or "").strip()
+    if not text:
+        return root_poses
+
+    for entry in text.split(";"):
+        chunk = entry.strip()
+        if not chunk or "=" not in chunk:
+            continue
+        robot_name, pose_csv = chunk.split("=", 1)
+        robot_name = robot_name.strip()
+        parts = [part.strip() for part in pose_csv.split(",") if part.strip()]
+        if robot_name and len(parts) == 4:
+            root_poses[robot_name] = tuple(float(part) for part in parts)
+
+    return root_poses
+
+
 class PlanningMapClearer(Node):
     def __init__(self):
         super().__init__("planning_map_clearer")
@@ -33,6 +52,7 @@ class PlanningMapClearer(Node):
         self.declare_parameter("output_topic", "planning_map")
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("base_frame", "base_footprint")
+        self.declare_parameter("root_poses", "")
         self.declare_parameter("clear_radius", 0.60)
         self.declare_parameter("publish_frequency", 5.0)
 
@@ -55,6 +75,9 @@ class PlanningMapClearer(Node):
         output_topic = self.get_parameter("output_topic").get_parameter_value().string_value
         self._map_frame = self.get_parameter("map_frame").get_parameter_value().string_value
         self._base_frame = self.get_parameter("base_frame").get_parameter_value().string_value
+        self._root_poses = _parse_root_poses(
+            self.get_parameter("root_poses").get_parameter_value().string_value
+        )
         self._clear_radius = (
             self.get_parameter("clear_radius").get_parameter_value().double_value
         )
@@ -129,8 +152,8 @@ class PlanningMapClearer(Node):
         self._publish_cleaned_map(msg)
 
     def _handle_odom(self, robot_name: str, msg: Odometry):
-        root_x, root_y, _root_z, root_yaw = DEFAULT_ROOT_POSES.get(
-            robot_name, DEFAULT_ROOT_POSES.get(self._robot_name, (0.0, 0.0, 0.0, 0.0))
+        root_x, root_y, _root_z, root_yaw = self._root_poses.get(
+            robot_name, self._root_poses.get(self._robot_name, (0.0, 0.0, 0.0, 0.0))
         )
         pose = msg.pose.pose
         local_x = float(pose.position.x)

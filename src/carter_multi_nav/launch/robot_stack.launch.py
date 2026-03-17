@@ -102,6 +102,7 @@ def _launch_setup(context, *_args, **_kwargs):
     ]
     if not all_robot_names:
         all_robot_names = [robot_name]
+    all_robot_root_poses = LaunchConfiguration("all_robot_root_poses").perform(context)
     slam_peer_exclusion_enabled = _is_true(
         LaunchConfiguration("slam_peer_exclusion_enabled").perform(context)
     )
@@ -257,7 +258,8 @@ def _launch_setup(context, *_args, **_kwargs):
                     "use_sim_time": use_sim_time_bool,
                     "robot_name": robot_name,
                     "robot_names": all_robot_names,
-                    "input_topic": "map",
+                    "root_poses": all_robot_root_poses,
+                    "input_topic": "/shared_map",
                     "output_topic": "planning_map",
                     "map_frame": "map",
                     "base_frame": "base_footprint",
@@ -340,6 +342,7 @@ def generate_launch_description():
             DeclareLaunchArgument("wait_for_nav_ready", default_value="true"),
             DeclareLaunchArgument("nav_ready_timeout", default_value="30.0"),
             DeclareLaunchArgument("all_robot_names", default_value=""),
+            DeclareLaunchArgument("all_robot_root_poses", default_value=""),
             DeclareLaunchArgument(
                 "scan_gate_max_rotation_per_scan_deg", default_value="1.25"
             ),

@@ -19,6 +19,11 @@ def _is_true(raw_value: str) -> bool:
     return str(raw_value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _serialize_root_pose(robot_name: str, root_pose):
+    x, y, z, yaw = root_pose
+    return f"{robot_name}={x},{y},{z},{yaw}"
+
+
 def _launch_setup(context, *_args, **_kwargs):
     package_dir = get_package_share_directory("carter_multi_nav")
     robot_stack_launch = os.path.join(package_dir, "launch", "robot_stack.launch.py")
@@ -34,6 +39,9 @@ def _launch_setup(context, *_args, **_kwargs):
     root_x, root_y, root_z, root_yaw = parse_pose_csv(
         LaunchConfiguration("robot_pose").perform(context),
         robot_name,
+    )
+    serialized_root_pose = _serialize_root_pose(
+        robot_name, (root_x, root_y, root_z, root_yaw)
     )
     use_sim_time = LaunchConfiguration("use_sim_time").perform(context)
     autostart = LaunchConfiguration("autostart").perform(context)
@@ -93,6 +101,7 @@ def _launch_setup(context, *_args, **_kwargs):
                 "wait_for_nav_ready": wait_for_nav_ready,
                 "nav_ready_timeout": nav_ready_timeout,
                 "all_robot_names": robot_name,
+                "all_robot_root_poses": serialized_root_pose,
                 "scan_gate_max_rotation_per_scan_deg": scan_gate_max_rotation_per_scan_deg,
                 "scan_gate_max_angular_velocity": scan_gate_max_angular_velocity,
                 "scan_gate_holdoff_after_rotation": scan_gate_holdoff_after_rotation,
@@ -222,7 +231,7 @@ def generate_launch_description():
             DeclareLaunchArgument("peer_exclusion_margin", default_value="0.10"),
             DeclareLaunchArgument("nav_target_linear_speed", default_value="0.80"),
             DeclareLaunchArgument("map_tf_smoothing_enabled", default_value="true"),
-            DeclareLaunchArgument("map_tf_smoothing_alpha", default_value="0.30"),
+            DeclareLaunchArgument("map_tf_smoothing_alpha", default_value="0.40"),
             DeclareLaunchArgument("map_tf_max_translation_jump", default_value="0.05"),
             DeclareLaunchArgument("map_tf_max_rotation_jump", default_value="0.02"),
             DeclareLaunchArgument(
