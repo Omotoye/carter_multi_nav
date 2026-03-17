@@ -40,7 +40,25 @@ DecentralizedMultiRobotSlamToolbox::DecentralizedMultiRobotSlamToolbox(rclcpp::N
     this->declare_parameter("scan_share_topic", "/localized_scan");
   }
   localized_scan_topic_ = this->get_parameter("scan_share_topic").as_string();
+
+  if (!this->has_parameter("peer_scan_processing_mode")) {
+    this->declare_parameter("peer_scan_processing_mode", "graph");
+  }
+  peer_scan_processing_mode_ = this->get_parameter("peer_scan_processing_mode").as_string();
+  if (
+    peer_scan_processing_mode_ != "graph" &&
+    peer_scan_processing_mode_ != "occupancy_only")
+  {
+    RCLCPP_WARN(
+      get_logger(),
+      "Unsupported peer_scan_processing_mode '%s'; falling back to 'graph'.",
+      peer_scan_processing_mode_.c_str());
+    peer_scan_processing_mode_ = "graph";
+  }
+
   RCLCPP_INFO(get_logger(), "Sharing scans on:  %s topic", localized_scan_topic_.c_str());
+  RCLCPP_INFO(
+    get_logger(), "Peer scan processing mode: %s", peer_scan_processing_mode_.c_str());
 
   localized_scan_pub_ = this->create_publisher<slam_toolbox::msg::LocalizedLaserScan>(
     localized_scan_topic_, 10);
@@ -143,8 +161,53 @@ LocalizedRangeScan * DecentralizedMultiRobotSlamToolbox::addExternalScan(
 
   boost::mutex::scoped_lock lock(smapper_mutex_);
 
+  if (peer_scan_processing_mode_ == "graph") {
+    // Upstream decentralized multi-robot behavior: peer scans are processed by
+    // the mapper so they participate in the host robot's pose-scan graph.
+    bool processed = false;
+    Matrix3 covariance;
+    covariance.SetToIdentity();
+
+    if (processor_type_ == PROCESS) {
+      processed = smapper_->getMapper()->Process(range_scan, &covariance);
+    } else if (processor_type_ == PROCESS_FIRST_NODE) {
+      processed = smapper_->getMapper()->ProcessAtDock(range_scan, &covariance);
+      processor_type_ = PROCESS;
+    } else if (processor_type_ == PROCESS_NEAR_REGION) {
+      boost::mutex::scoped_lock l(pose_mutex_);
+      if (!process_near_pose_) {
+        RCLCPP_ERROR(
+          get_logger(), "Process near region called without a "
+          "valid region request. Ignoring scan.");
+        delete range_scan;
+        return nullptr;
+      }
+      range_scan->SetOdometricPose(*process_near_pose_);
+      range_scan->SetCorrectedPose(range_scan->GetOdometricPose());
+      process_near_pose_.reset(nullptr);
+      processed = smapper_->getMapper()->ProcessAgainstNodesNearBy(
+        range_scan, false, &covariance);
+      processor_type_ = PROCESS;
+    } else {
+      RCLCPP_FATAL(
+        get_logger(), "SlamToolbox: No valid processor type set! Exiting.");
+      exit(-1);
+    }
+
+    if (processed) {
+      if (enable_interactive_mode_) {
+        scan_holder_->addScan(*scan);
+      }
+    } else {
+      delete range_scan;
+      range_scan = nullptr;
+    }
+
+    return range_scan;
+  }
+
   // ---------------------------------------------------------------
-  // Map-only processing for peer scans:
+  // Occupancy-only processing for peer scans:
   // We scan-match against nearby nodes to get a corrected pose (so the
   // peer's data renders correctly in the map), but we do NOT add
   // vertices, edges, or attempt loop closures.  This prevents the
@@ -196,14 +259,13 @@ LocalizedRangeScan * DecentralizedMultiRobotSlamToolbox::addExternalScan(
     }
   }
 
-  // Store the scan for map rendering (occupancy grid generation)
-  // but do NOT add it to the graph or trigger loop closures
+  // Contribute peer scans to the occupancy grid so every robot publishes the
+  // collaborative map, but still avoid pose-graph mutations such as new
+  // vertices, edges, and loop-closure attempts.
   if (enable_interactive_mode_) {
     scan_holder_->addScan(*scan);
   }
 
-  // Add scan to the sensor manager so it appears in the occupancy grid,
-  // but skip AddVertex/AddEdges/TryCloseLoop
   smapper_->getMapper()->GetMapperSensorManager()->AddScan(range_scan);
   dataset_->Add(range_scan);
 
