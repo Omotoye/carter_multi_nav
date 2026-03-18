@@ -30,6 +30,8 @@ For each robot (`carter1`, `carter2`, `carter3`) the workspace launches:
 - static TF for `base_link -> base_footprint`
 - static TF for `base_link -> front_2d_lidar`
 - `laser_filters` on `/<robot>/front_2d_lidar/scan -> /<robot>/scan_filtered`
+- `scan_peer_exclusion` on `/<robot>/scan_filtered -> /<robot>/scan_peer_filtered`
+- `planning_map_clearer` on `/shared_map -> /<robot>/planning_map`
 - decentralized `slam_toolbox`
 - a full Nav2 stack
 
@@ -230,17 +232,28 @@ The gate drops scans when angular motion is high enough to exceed the configured
 
 ## Shared Map Behavior
 
-`/shared_map` is a canonical display map selected from one robot's namespaced map topic.
+`/shared_map` is a canonical shared map selected from one robot's namespaced map topic.
 
 By default:
 
 - `/shared_map` republishes `/carter1/map`
 
-This is a visualization convenience. It is not a separate centralized map-merge node.
+This is not a separate centralized map-merge node.
+
+Each robot plans against its own `/<robot>/planning_map`, which is derived from `/shared_map`.
+`planning_map_clearer` removes all robot footprints from that planning map using the shared
+aggregated TF tree so peer robots do not remain baked in as occupied cells.
+
+The scan paths are split on purpose:
+
+- `/<robot>/scan_filtered` remains the local obstacle source
+- `/<robot>/scan_peer_filtered` removes peer robot returns for shared-map global planning
 
 ## Key Topics
 
 - `/<robot>/scan_filtered`
+- `/<robot>/scan_peer_filtered`
+- `/<robot>/planning_map`
 - `/<robot>/map`
 - `/<robot>/cmd_vel`
 - `/<robot>/navigate_to_pose`
@@ -299,6 +312,8 @@ Check:
 ros2 action list | grep navigate_to_pose
 ros2 topic echo /carter1/cmd_vel --once
 ros2 topic echo /carter1/scan_filtered --once
+ros2 topic echo /carter1/scan_peer_filtered --once
+ros2 topic echo /carter1/planning_map --once
 ```
 
 Typical causes:
@@ -306,6 +321,7 @@ Typical causes:
 - goal is in unknown space
 - goal is outside the robot's current map
 - lidar data is missing
+- peer robot occupancy is still present because shared TF is missing or stale
 - that robot's SLAM node is not publishing a valid `map -> odom` transform yet
 
 ### You see DDS participant exhaustion or discovery issues
