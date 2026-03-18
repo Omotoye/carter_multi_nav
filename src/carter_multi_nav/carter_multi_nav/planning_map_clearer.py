@@ -2,7 +2,6 @@ import math
 
 import rclpy
 from nav_msgs.msg import OccupancyGrid
-from nav_msgs.msg import Odometry
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
@@ -10,7 +9,12 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
 
-from carter_multi_nav.common import DEFAULT_ROOT_POSES, DEFAULT_ROBOTS
+from carter_multi_nav.common import (
+    DEFAULT_ROOT_POSES,
+    DEFAULT_ROBOTS,
+    FOOTPRINT_POLYGON,
+    prefixed_frame,
+)
 
 
 def _yaw_from_quaternion(quaternion) -> float:
@@ -42,6 +46,17 @@ def _parse_root_poses(raw_value: str):
     return root_poses
 
 
+def _inflated_footprint_bounds(padding: float):
+    xs = [point[0] for point in FOOTPRINT_POLYGON]
+    ys = [point[1] for point in FOOTPRINT_POLYGON]
+    return (
+        min(xs) - padding,
+        max(xs) + padding,
+        min(ys) - padding,
+        max(ys) + padding,
+    )
+
+
 class PlanningMapClearer(Node):
     def __init__(self):
         super().__init__("planning_map_clearer")
@@ -54,6 +69,7 @@ class PlanningMapClearer(Node):
         self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("root_poses", "")
         self.declare_parameter("clear_radius", 0.60)
+        self.declare_parameter("footprint_padding", 0.10)
         self.declare_parameter("publish_frequency", 5.0)
 
         self._robot_name = (
@@ -78,8 +94,20 @@ class PlanningMapClearer(Node):
         self._root_poses = _parse_root_poses(
             self.get_parameter("root_poses").get_parameter_value().string_value
         )
+        footprint_padding = (
+            self.get_parameter("footprint_padding").get_parameter_value().double_value
+        )
         self._clear_radius = (
             self.get_parameter("clear_radius").get_parameter_value().double_value
+        )
+        self._footprint_bounds = _inflated_footprint_bounds(footprint_padding)
+        self._lookup_radius = max(
+            self._clear_radius,
+            max(
+                math.hypot(bound_x, bound_y)
+                for bound_x in self._footprint_bounds[:2]
+                for bound_y in self._footprint_bounds[2:]
+            ),
         )
         publish_frequency = (
             self.get_parameter("publish_frequency").get_parameter_value().double_value
@@ -106,7 +134,6 @@ class PlanningMapClearer(Node):
         self._last_tf_warn_ns = 0
         self._shutting_down = False
         self._latest_map = None
-        self._global_robot_poses = {}
 
         # The live SLAM map durability differs between runs, so subscribe both
         # ways and normalize it into a single transient-local planning map.
@@ -118,21 +145,6 @@ class PlanningMapClearer(Node):
                 OccupancyGrid, input_topic, self._handle_map, volatile_qos
             ),
         ]
-        odom_qos = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=20,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-        )
-        for robot_name in self._robot_names:
-            self._subscriptions.append(
-                self.create_subscription(
-                    Odometry,
-                    f"/{robot_name}/chassis/odom",
-                    lambda msg, robot=robot_name: self._handle_odom(robot, msg),
-                    odom_qos,
-                )
-            )
         if publish_frequency > 0.0:
             self._publish_timer = self.create_timer(
                 1.0 / publish_frequency, self._publish_latest_map
@@ -141,8 +153,8 @@ class PlanningMapClearer(Node):
             self._publish_timer = None
 
         self.get_logger().info(
-            "Clearing a %.2fm radius robot footprint from '%s' into '%s'"
-            % (self._clear_radius, input_topic, output_topic)
+            "Clearing robot footprints from '%s' into '%s' using aggregated shared TF"
+            % (input_topic, output_topic)
         )
 
     def _handle_map(self, msg: OccupancyGrid):
@@ -150,20 +162,6 @@ class PlanningMapClearer(Node):
             return
         self._latest_map = msg
         self._publish_cleaned_map(msg)
-
-    def _handle_odom(self, robot_name: str, msg: Odometry):
-        root_x, root_y, _root_z, root_yaw = self._root_poses.get(
-            robot_name, self._root_poses.get(self._robot_name, (0.0, 0.0, 0.0, 0.0))
-        )
-        pose = msg.pose.pose
-        local_x = float(pose.position.x)
-        local_y = float(pose.position.y)
-        local_yaw = _yaw_from_quaternion(pose.orientation)
-        self._global_robot_poses[robot_name] = {
-            "x": root_x + (math.cos(root_yaw) * local_x) - (math.sin(root_yaw) * local_y),
-            "y": root_y + (math.sin(root_yaw) * local_x) + (math.cos(root_yaw) * local_y),
-            "yaw": root_yaw + local_yaw,
-        }
 
     def _publish_latest_map(self):
         if self._shutting_down or self._latest_map is None:
@@ -176,11 +174,6 @@ class PlanningMapClearer(Node):
         cleaned.info = msg.info
         cleaned.data = list(msg.data)
 
-        self_transform = self._lookup_robot_pose()
-        if self_transform is None:
-            self._publisher.publish(cleaned)
-            return
-
         resolution = float(cleaned.info.resolution)
         if resolution <= 0.0 or cleaned.info.width == 0 or cleaned.info.height == 0:
             self._publisher.publish(cleaned)
@@ -188,56 +181,86 @@ class PlanningMapClearer(Node):
 
         origin_x = float(cleaned.info.origin.position.x)
         origin_y = float(cleaned.info.origin.position.y)
-        radius_cells = max(1, int(math.ceil(self._clear_radius / resolution)))
         width = int(cleaned.info.width)
         height = int(cleaned.info.height)
-
-        robot_positions = [
-            (
-                float(self_transform.transform.translation.x),
-                float(self_transform.transform.translation.y),
+        cleared_any = False
+        for robot_name in self._robot_names:
+            transform = self._lookup_robot_pose(robot_name)
+            if transform is None:
+                continue
+            cleared_any = True
+            self._clear_robot_footprint(
+                cleaned,
+                robot_x=float(transform.transform.translation.x),
+                robot_y=float(transform.transform.translation.y),
+                robot_yaw=_yaw_from_quaternion(transform.transform.rotation),
+                origin_x=origin_x,
+                origin_y=origin_y,
+                resolution=resolution,
+                width=width,
+                height=height,
             )
-        ]
-        map_to_global = self._lookup_map_to_global()
-        if map_to_global is not None:
-            yaw = _yaw_from_quaternion(map_to_global.transform.rotation)
-            cos_yaw = math.cos(yaw)
-            sin_yaw = math.sin(yaw)
-            translation_x = float(map_to_global.transform.translation.x)
-            translation_y = float(map_to_global.transform.translation.y)
-            for robot_name, pose in self._global_robot_poses.items():
-                if robot_name == self._robot_name:
-                    continue
-                map_x = translation_x + (cos_yaw * float(pose["x"])) - (
-                    sin_yaw * float(pose["y"])
-                )
-                map_y = translation_y + (sin_yaw * float(pose["x"])) + (
-                    cos_yaw * float(pose["y"])
-                )
-                robot_positions.append((map_x, map_y))
 
-        for robot_x, robot_y in robot_positions:
-            center_x = int(round((robot_x - origin_x) / resolution))
-            center_y = int(round((robot_y - origin_y) / resolution))
-            for dy in range(-radius_cells, radius_cells + 1):
-                cell_y = center_y + dy
-                if cell_y < 0 or cell_y >= height:
-                    continue
-                for dx in range(-radius_cells, radius_cells + 1):
-                    if (dx * dx) + (dy * dy) > radius_cells * radius_cells:
-                        continue
-                    cell_x = center_x + dx
-                    if cell_x < 0 or cell_x >= width:
-                        continue
-                    cleaned.data[(cell_y * width) + cell_x] = 0
+        if not cleared_any:
+            now_ns = self.get_clock().now().nanoseconds
+            if now_ns - self._last_tf_warn_ns >= 5_000_000_000:
+                self.get_logger().warn(
+                    "Publishing raw planning map because no robot poses are available in the shared map frame yet."
+                )
+                self._last_tf_warn_ns = now_ns
 
         self._publisher.publish(cleaned)
 
-    def _lookup_robot_pose(self):
+    def _clear_robot_footprint(
+        self,
+        cleaned: OccupancyGrid,
+        *,
+        robot_x: float,
+        robot_y: float,
+        robot_yaw: float,
+        origin_x: float,
+        origin_y: float,
+        resolution: float,
+        width: int,
+        height: int,
+    ):
+        min_local_x, max_local_x, min_local_y, max_local_y = self._footprint_bounds
+        radius_cells = max(1, int(math.ceil(self._lookup_radius / resolution)))
+        center_x = int(round((robot_x - origin_x) / resolution))
+        center_y = int(round((robot_y - origin_y) / resolution))
+        cos_yaw = math.cos(robot_yaw)
+        sin_yaw = math.sin(robot_yaw)
+
+        for dy in range(-radius_cells, radius_cells + 1):
+            cell_y = center_y + dy
+            if cell_y < 0 or cell_y >= height:
+                continue
+            world_y = origin_y + ((cell_y + 0.5) * resolution)
+            for dx in range(-radius_cells, radius_cells + 1):
+                cell_x = center_x + dx
+                if cell_x < 0 or cell_x >= width:
+                    continue
+
+                world_x = origin_x + ((cell_x + 0.5) * resolution)
+                rel_x = world_x - robot_x
+                rel_y = world_y - robot_y
+                local_x = (cos_yaw * rel_x) + (sin_yaw * rel_y)
+                local_y = (-sin_yaw * rel_x) + (cos_yaw * rel_y)
+                if (
+                    local_x < min_local_x
+                    or local_x > max_local_x
+                    or local_y < min_local_y
+                    or local_y > max_local_y
+                ):
+                    continue
+
+                cleaned.data[(cell_y * width) + cell_x] = 0
+
+    def _lookup_robot_pose(self, robot_name: str):
         try:
             return self._tf_buffer.lookup_transform(
                 self._map_frame,
-                self._base_frame,
+                prefixed_frame(robot_name, self._base_frame),
                 Time(),
                 timeout=Duration(seconds=0.0),
             )
@@ -245,21 +268,14 @@ class PlanningMapClearer(Node):
             now_ns = self.get_clock().now().nanoseconds
             if now_ns - self._last_tf_warn_ns >= 5_000_000_000:
                 self.get_logger().warn(
-                    "Publishing raw map because %s -> %s is not ready yet: %s"
-                    % (self._map_frame, self._base_frame, exc)
+                    "Planning map clearing is waiting for shared TF %s -> %s: %s"
+                    % (
+                        self._map_frame,
+                        prefixed_frame(robot_name, self._base_frame),
+                        exc,
+                    )
                 )
                 self._last_tf_warn_ns = now_ns
-            return None
-
-    def _lookup_map_to_global(self):
-        try:
-            return self._tf_buffer.lookup_transform(
-                self._map_frame,
-                "global_odom",
-                Time(),
-                timeout=Duration(seconds=0.0),
-            )
-        except TransformException:
             return None
 
     def shutdown(self):

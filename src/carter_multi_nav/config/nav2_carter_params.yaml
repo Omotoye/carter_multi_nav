@@ -213,7 +213,7 @@ global_costmap:
         footprint_clearing_enabled: true
         observation_sources: scan
         scan:
-          topic: scan_filtered
+          topic: scan_peer_filtered
           data_type: "LaserScan"
           observation_persistence: 0.0
           expected_update_rate: 2.0

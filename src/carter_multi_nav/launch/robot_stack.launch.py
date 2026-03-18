@@ -205,26 +205,26 @@ def _launch_setup(context, *_args, **_kwargs):
     ]
 
     scan_gate_input_topic = "scan_filtered"
-    if slam_peer_exclusion_enabled:
-        actions.append(
-            Node(
-                package="carter_multi_nav",
-                executable="scan_peer_exclusion",
-                name="scan_peer_exclusion",
-                namespace=robot_name,
-                output="screen",
-                parameters=[
-                    {
-                        "use_sim_time": use_sim_time_bool,
-                        "robot_name": robot_name,
-                        "robot_names": all_robot_names,
-                        "scan_in": "scan_filtered",
-                        "scan_out": "scan_peer_filtered",
-                        "peer_exclusion_margin": peer_exclusion_margin,
-                    }
-                ],
-            )
+    actions.append(
+        Node(
+            package="carter_multi_nav",
+            executable="scan_peer_exclusion",
+            name="scan_peer_exclusion",
+            namespace=robot_name,
+            output="screen",
+            parameters=[
+                {
+                    "use_sim_time": use_sim_time_bool,
+                    "robot_name": robot_name,
+                    "robot_names": all_robot_names,
+                    "scan_in": "scan_filtered",
+                    "scan_out": "scan_peer_filtered",
+                    "peer_exclusion_margin": peer_exclusion_margin,
+                }
+            ],
         )
+    )
+    if slam_peer_exclusion_enabled:
         scan_gate_input_topic = "scan_peer_filtered"
 
     actions.extend(
@@ -266,7 +266,6 @@ def _launch_setup(context, *_args, **_kwargs):
                     "clear_radius": 0.60,
                 }
             ],
-            remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(slam_launch_path),
@@ -292,7 +291,7 @@ def _launch_setup(context, *_args, **_kwargs):
                 {
                     "use_sim_time": use_sim_time_bool,
                     "map_topic": "planning_map",
-                    "scan_topic": "scan_filtered",
+                    "scan_topic": "scan_peer_filtered",
                     "odom_topic": "chassis/odom",
                     "map_frame": "map",
                     "base_frame": "base_footprint",

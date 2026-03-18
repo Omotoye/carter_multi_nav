@@ -44,6 +44,7 @@ def _launch_setup(context, *_args, **_kwargs):
         # Force costmap sensor subscriptions onto the robot-level topics rather
         # than nested local_costmap/global_costmap relative names.
         ("scan_filtered", ["/", namespace, "/scan_filtered"]),
+        ("scan_peer_filtered", ["/", namespace, "/scan_peer_filtered"]),
         ("map", ["/", namespace, "/planning_map"]),
         ("planning_map", ["/", namespace, "/planning_map"]),
     ]

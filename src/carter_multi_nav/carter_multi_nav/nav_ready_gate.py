@@ -28,6 +28,8 @@ class NavReadyGate(Node):
         map_topic = self.get_parameter("map_topic").get_parameter_value().string_value
         scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
         odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
+        self._scan_topic = scan_topic
+        self._odom_topic = odom_topic
         self._map_frame = (
             self.get_parameter("map_frame").get_parameter_value().string_value
         )
@@ -120,9 +122,9 @@ class NavReadyGate(Node):
         if not self._have_map:
             missing.append("map")
         if not self._have_scan:
-            missing.append("scan_filtered")
+            missing.append(self._scan_topic)
         if not self._have_odom:
-            missing.append("chassis/odom")
+            missing.append(self._odom_topic)
 
         if self._ready_to_check_tf():
             if self._tf_buffer.can_transform(
