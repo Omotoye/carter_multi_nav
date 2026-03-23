@@ -60,7 +60,9 @@ Install the ROS packages used by this workspace:
 sudo apt update
 sudo apt install -y \
   python3-colcon-common-extensions \
+  python3-opencv \
   python3-rosdep \
+  ros-jazzy-cv-bridge \
   ros-jazzy-navigation2 \
   ros-jazzy-nav2-bringup \
   ros-jazzy-laser-filters \
@@ -202,6 +204,68 @@ carter_ros2 action info /carter1/navigate_to_pose
 carter_ros2 topic echo /carter1/cmd_vel --once
 carter_ros2 topic echo /carter1/plan --once
 ```
+
+## AprilTag Detection
+
+This workspace now includes an AprilTag detector node that subscribes to the three
+camera streams currently available in the ROS 2 graph:
+
+- `/carter1/front_stereo_camera/left/image_raw`
+- `/carter2/front_stereo_camera/left/image_raw`
+- `/carter3/front_stereo_camera/left/image_raw`
+
+It uses OpenCV's AprilTag dictionaries, filters detections to tag IDs `1..10`, and
+publishes the aggregated unique ID list on `/april_tag/detected_ids` as
+`std_msgs/msg/Int32MultiArray`.
+
+It also publishes detections grouped by robot on `/april_tag/detections_by_robot`
+as `carter_multi_nav_msgs/msg/RobotTagDetectionsArray`, with one entry per robot
+containing:
+
+- `robot_name`
+- `image_topic`
+- `tag_ids`
+
+For better robustness, the node now prefers the dedicated `pupil_apriltags`
+backend when it is installed and falls back to OpenCV otherwise. The current
+machine was updated with:
+
+```bash
+python3 -m pip install --user --break-system-packages pupil-apriltags
+```
+
+Build the workspace after pulling these changes:
+
+```bash
+cd ~/carter_nav_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install --allow-overriding slam_toolbox --packages-up-to carter_multi_nav
+source install/setup.bash
+```
+
+Run the detector:
+
+```bash
+ros2 launch carter_multi_nav april_tag_detector.launch.py
+```
+
+Watch the detected tag list:
+
+```bash
+ros2 topic echo /april_tag/detected_ids
+ros2 topic echo /april_tag/detections_by_robot
+```
+
+Useful overrides:
+
+- `tag_family:=36h11`
+- `min_tag_id:=1`
+- `max_tag_id:=10`
+- `publish_rate_hz:=5.0`
+- `detection_hold_time:=1.0`
+- `max_processing_fps:=6.0`
+- `publish_by_robot_topic:=/april_tag/detections_by_robot`
+- `image_topics:=/carter1/front_stereo_camera/left/image_raw,/carter2/front_stereo_camera/left/image_raw,/carter3/front_stereo_camera/left/image_raw`
 
 ## Scan Diagnostics
 

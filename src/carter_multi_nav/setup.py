@@ -30,6 +30,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
+            "april_tag_detector = carter_multi_nav.april_tag_detector:main",
             "lifecycle_bringup_gate = carter_multi_nav.lifecycle_bringup_gate:main",
             "map_selector = carter_multi_nav.map_selector:main",
             "multi_robot_map_metrics = carter_multi_nav.multi_robot_map_metrics:main",
