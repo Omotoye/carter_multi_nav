@@ -81,9 +81,15 @@ class ScanPeerExclusion(Node):
         self.declare_parameter("scan_in", "scan_filtered")
         self.declare_parameter("scan_out", "scan_peer_filtered")
         self.declare_parameter("peer_base_frame", BASE_FOOTPRINT_FRAME)
-        self.declare_parameter("peer_exclusion_margin", 0.10)
-        self.declare_parameter("range_tolerance", 0.05)
+        self.declare_parameter("peer_exclusion_margin", 0.40)
+        self.declare_parameter("range_tolerance", 0.20)
         self.declare_parameter("status_interval", 5.0)
+        self.declare_parameter("cached_pose_max_age", 2.0)
+        # Masked beams are set to this range instead of inf so the costmap
+        # raytrace clears stale obstacle cells where the peer was.  Must be
+        # between obstacle_max_range (6.0) and raytrace_max_range (8.0) so
+        # the beam clears but does not mark a new obstacle.
+        self.declare_parameter("clearing_range", 7.0)
 
         self._robot_name = (
             self.get_parameter("robot_name").get_parameter_value().string_value.strip()
@@ -117,6 +123,9 @@ class ScanPeerExclusion(Node):
         self._range_tolerance = (
             self.get_parameter("range_tolerance").get_parameter_value().double_value
         )
+        self._clearing_range = (
+            self.get_parameter("clearing_range").get_parameter_value().double_value
+        )
         self._bounds = _inflated_rectangle_bounds(
             self.get_parameter("peer_exclusion_margin")
             .get_parameter_value()
@@ -143,12 +152,20 @@ class ScanPeerExclusion(Node):
         self._tf_buffer = Buffer(cache_time=Duration(seconds=10.0))
         self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=False)
         self._last_tf_warn_ns = 0
+        self._cached_pose_max_age = (
+            self.get_parameter("cached_pose_max_age").get_parameter_value().double_value
+        )
+
+        # Cache of last-known peer poses so TF dropouts don't cause
+        # unfiltered scans to leak through.  Keys are peer names.
+        self._cached_peer_poses = {}  # {peer_name: {"x", "y", "yaw", "stamp_ns"}}
 
         self._received_scans = 0
         self._published_scans = 0
         self._masked_scans = 0
         self._masked_beams = 0
         self._peers_available = 0
+        self._cache_hits = 0
 
         self.create_timer(max(status_interval, 0.5), self._report)
 
@@ -159,6 +176,9 @@ class ScanPeerExclusion(Node):
 
     def _lookup_peer_poses(self, scan_frame: str):
         peer_poses = []
+        now_ns = self.get_clock().now().nanoseconds
+        max_age_ns = int(self._cached_pose_max_age * 1e9)
+
         for peer_name in self._peer_names:
             try:
                 transform = self._tf_buffer.lookup_transform(
@@ -168,24 +188,40 @@ class ScanPeerExclusion(Node):
                     timeout=Duration(seconds=0.0),
                 )
             except TransformException as exc:
-                now_ns = self.get_clock().now().nanoseconds
-                if now_ns - self._last_tf_warn_ns >= 5_000_000_000:
-                    self.get_logger().warn(
-                        "Peer exclusion is passing scans through until aggregated TF is ready: %s"
-                        % exc
+                # TF failed — fall back to cached pose if recent enough.
+                cached = self._cached_peer_poses.get(peer_name)
+                if cached is not None and (now_ns - cached["stamp_ns"]) < max_age_ns:
+                    peer_poses.append(
+                        {
+                            "name": cached["name"],
+                            "x": cached["x"],
+                            "y": cached["y"],
+                            "yaw": cached["yaw"],
+                        }
                     )
-                    self._last_tf_warn_ns = now_ns
+                    self._cache_hits += 1
+                else:
+                    if now_ns - self._last_tf_warn_ns >= 5_000_000_000:
+                        self.get_logger().warn(
+                            "Peer exclusion has no TF and no recent cache for '%s': %s"
+                            % (peer_name, exc)
+                        )
+                        self._last_tf_warn_ns = now_ns
                 continue
 
             translation = transform.transform.translation
-            peer_poses.append(
-                {
-                    "name": peer_name,
-                    "x": float(translation.x),
-                    "y": float(translation.y),
-                    "yaw": _yaw_from_quaternion(transform.transform.rotation),
-                }
-            )
+            pose = {
+                "name": peer_name,
+                "x": float(translation.x),
+                "y": float(translation.y),
+                "yaw": _yaw_from_quaternion(transform.transform.rotation),
+            }
+            # Update cache with fresh TF data.
+            self._cached_peer_poses[peer_name] = {
+                **pose,
+                "stamp_ns": now_ns,
+            }
+            peer_poses.append(pose)
         return peer_poses
 
     def _mask_scan(self, msg: LaserScan, peer_poses):
@@ -226,7 +262,7 @@ class ScanPeerExclusion(Node):
                 if scan_range + self._range_tolerance < entry_distance:
                     continue
 
-                masked_ranges[index] = float("inf")
+                masked_ranges[index] = self._clearing_range
                 if index < len(masked_intensities):
                     masked_intensities[index] = 0.0
                 masked_beam_count += 1
@@ -273,13 +309,14 @@ class ScanPeerExclusion(Node):
             return
 
         self.get_logger().info(
-            "Peer exclusion stats: scans=%d published=%d masked_scans=%d masked_beams=%d peers_seen=%d"
+            "Peer exclusion stats: scans=%d published=%d masked_scans=%d masked_beams=%d peers_seen=%d cache_hits=%d"
             % (
                 self._received_scans,
                 self._published_scans,
                 self._masked_scans,
                 self._masked_beams,
                 self._peers_available,
+                self._cache_hits,
             )
         )
 

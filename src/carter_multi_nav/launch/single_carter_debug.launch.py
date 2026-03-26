@@ -228,7 +228,7 @@ def generate_launch_description():
             DeclareLaunchArgument("scan_gate_holdoff_after_rotation", default_value="0.40"),
             DeclareLaunchArgument("slam_peer_exclusion_enabled", default_value="false"),
             DeclareLaunchArgument("slam_share_localized_scans", default_value="true"),
-            DeclareLaunchArgument("peer_exclusion_margin", default_value="0.10"),
+            DeclareLaunchArgument("peer_exclusion_margin", default_value="0.40"),
             DeclareLaunchArgument("nav_target_linear_speed", default_value="0.80"),
             DeclareLaunchArgument("map_tf_smoothing_enabled", default_value="true"),
             DeclareLaunchArgument("map_tf_smoothing_alpha", default_value="0.40"),

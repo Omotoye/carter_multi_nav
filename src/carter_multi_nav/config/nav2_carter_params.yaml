@@ -184,7 +184,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.55
+        inflation_radius: 0.60
       always_send_full_costmap: true
 
 global_costmap:
@@ -213,7 +213,7 @@ global_costmap:
         footprint_clearing_enabled: true
         observation_sources: scan
         scan:
-          topic: scan_peer_filtered
+          topic: scan_filtered
           data_type: "LaserScan"
           observation_persistence: 0.0
           expected_update_rate: 2.0
@@ -227,7 +227,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.55
+        inflation_radius: 0.60
       always_send_full_costmap: true
 
 lifecycle_manager_navigation:

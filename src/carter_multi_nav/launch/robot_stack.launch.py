@@ -263,7 +263,8 @@ def _launch_setup(context, *_args, **_kwargs):
                     "output_topic": "planning_map",
                     "map_frame": "map",
                     "base_frame": "base_footprint",
-                    "clear_radius": 0.60,
+                    "clear_radius": 0.85,
+                    "footprint_padding": 0.10,
                 }
             ],
         ),
@@ -291,7 +292,7 @@ def _launch_setup(context, *_args, **_kwargs):
                 {
                     "use_sim_time": use_sim_time_bool,
                     "map_topic": "planning_map",
-                    "scan_topic": "scan_peer_filtered",
+                    "scan_topic": "scan_filtered",
                     "odom_topic": "chassis/odom",
                     "map_frame": "map",
                     "base_frame": "base_footprint",
@@ -349,7 +350,7 @@ def generate_launch_description():
             DeclareLaunchArgument("scan_gate_holdoff_after_rotation", default_value="0.40"),
             DeclareLaunchArgument("slam_peer_exclusion_enabled", default_value="false"),
             DeclareLaunchArgument("slam_share_localized_scans", default_value="true"),
-            DeclareLaunchArgument("peer_exclusion_margin", default_value="0.10"),
+            DeclareLaunchArgument("peer_exclusion_margin", default_value="0.40"),
             DeclareLaunchArgument("nav_target_linear_speed", default_value="0.80"),
             OpaqueFunction(function=_launch_setup),
         ]

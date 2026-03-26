@@ -57,6 +57,82 @@ def _inflated_footprint_bounds(padding: float):
     )
 
 
+def _polygon_edges(polygon):
+    if len(polygon) < 2:
+        return []
+    return list(zip(polygon, polygon[1:] + polygon[:1]))
+
+
+def _point_to_segment_distance_squared(
+    point_x: float,
+    point_y: float,
+    start_x: float,
+    start_y: float,
+    end_x: float,
+    end_y: float,
+) -> float:
+    segment_x = end_x - start_x
+    segment_y = end_y - start_y
+    segment_length_squared = (segment_x * segment_x) + (segment_y * segment_y)
+    if segment_length_squared <= 0.0:
+        delta_x = point_x - start_x
+        delta_y = point_y - start_y
+        return (delta_x * delta_x) + (delta_y * delta_y)
+
+    projection = (
+        ((point_x - start_x) * segment_x) + ((point_y - start_y) * segment_y)
+    ) / segment_length_squared
+    projection = max(0.0, min(1.0, projection))
+    closest_x = start_x + (projection * segment_x)
+    closest_y = start_y + (projection * segment_y)
+    delta_x = point_x - closest_x
+    delta_y = point_y - closest_y
+    return (delta_x * delta_x) + (delta_y * delta_y)
+
+
+def _point_in_polygon(point_x: float, point_y: float, polygon) -> bool:
+    inside = False
+    for start, end in _polygon_edges(polygon):
+        start_x, start_y = start
+        end_x, end_y = end
+        intersects = (start_y > point_y) != (end_y > point_y)
+        if not intersects:
+            continue
+        intersect_x = ((end_x - start_x) * (point_y - start_y) / (end_y - start_y)) + start_x
+        if point_x < intersect_x:
+            inside = not inside
+    return inside
+
+
+def _point_in_padded_polygon(
+    point_x: float,
+    point_y: float,
+    polygon,
+    edges,
+    padding: float,
+) -> bool:
+    if _point_in_polygon(point_x, point_y, polygon):
+        return True
+    if padding <= 0.0:
+        return False
+
+    max_distance_squared = padding * padding
+    for start, end in edges:
+        if (
+            _point_to_segment_distance_squared(
+                point_x,
+                point_y,
+                start[0],
+                start[1],
+                end[0],
+                end[1],
+            )
+            <= max_distance_squared
+        ):
+            return True
+    return False
+
+
 class PlanningMapClearer(Node):
     def __init__(self):
         super().__init__("planning_map_clearer")
@@ -94,20 +170,18 @@ class PlanningMapClearer(Node):
         self._root_poses = _parse_root_poses(
             self.get_parameter("root_poses").get_parameter_value().string_value
         )
-        footprint_padding = (
+        self._footprint_padding = (
             self.get_parameter("footprint_padding").get_parameter_value().double_value
         )
         self._clear_radius = (
             self.get_parameter("clear_radius").get_parameter_value().double_value
         )
-        self._footprint_bounds = _inflated_footprint_bounds(footprint_padding)
-        self._lookup_radius = max(
-            self._clear_radius,
-            max(
-                math.hypot(bound_x, bound_y)
-                for bound_x in self._footprint_bounds[:2]
-                for bound_y in self._footprint_bounds[2:]
-            ),
+        self._footprint_polygon = [tuple(point) for point in FOOTPRINT_POLYGON]
+        self._footprint_edges = _polygon_edges(self._footprint_polygon)
+        self._footprint_bounds = _inflated_footprint_bounds(self._footprint_padding)
+        self._lookup_radius = (
+            max(math.hypot(point_x, point_y) for point_x, point_y in self._footprint_polygon)
+            + max(self._footprint_padding, 0.0)
         )
         publish_frequency = (
             self.get_parameter("publish_frequency").get_parameter_value().double_value
@@ -156,6 +230,11 @@ class PlanningMapClearer(Node):
             "Clearing robot footprints from '%s' into '%s' using aggregated shared TF"
             % (input_topic, output_topic)
         )
+        if self._clear_radius > 0.0:
+            self.get_logger().info(
+                "Ignoring legacy clear_radius=%.2f; using padded footprint geometry instead."
+                % self._clear_radius
+            )
 
     def _handle_map(self, msg: OccupancyGrid):
         if self._shutting_down:
@@ -251,6 +330,15 @@ class PlanningMapClearer(Node):
                     or local_x > max_local_x
                     or local_y < min_local_y
                     or local_y > max_local_y
+                ):
+                    continue
+
+                if not _point_in_padded_polygon(
+                    local_x,
+                    local_y,
+                    self._footprint_polygon,
+                    self._footprint_edges,
+                    self._footprint_padding,
                 ):
                     continue
 

@@ -32,6 +32,7 @@ For each robot (`carter1`, `carter2`, `carter3`) the workspace launches:
 - `laser_filters` on `/<robot>/front_2d_lidar/scan -> /<robot>/scan_filtered`
 - `scan_peer_exclusion` on `/<robot>/scan_filtered -> /<robot>/scan_peer_filtered`
 - `planning_map_clearer` on `/shared_map -> /<robot>/planning_map`
+- `nav2_collision_monitor` on `/<robot>/scan_filtered` and `/<robot>/cmd_vel_smoothed -> /<robot>/cmd_vel`
 - decentralized `slam_toolbox`
 - a full Nav2 stack
 
@@ -62,6 +63,7 @@ sudo apt install -y \
   python3-colcon-common-extensions \
   python3-opencv \
   python3-rosdep \
+  ros-jazzy-nav2-collision-monitor \
   ros-jazzy-cv-bridge \
   ros-jazzy-navigation2 \
   ros-jazzy-nav2-bringup \
@@ -126,6 +128,7 @@ Useful launch arguments:
 - `scan_gate_max_rotation_per_scan_deg:=1.5`
 - `scan_gate_max_angular_velocity:=0.30`
 - `scan_gate_holdoff_after_rotation:=0.10`
+- `nav_target_linear_speed:=1.60`
 - `carter1_pose:=0.0,0.0,0.0,3.141592653589793`
 - `carter2_pose:=4.0,-1.0,0.0,3.141592653589793`
 - `carter3_pose:=7.0,3.0,0.0,3.141592653589793`
